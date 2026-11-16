@@ -17,11 +17,10 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 // ...
 app.use('/api/auth', authRoutes);
 // Mount routes here as you build them:
-app.use('/api/auth', authRoutes);
-app.use('/api/donors', donorRoutes);
-app.use('/api/emergencies', emergencyRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/admin', adminRoutes);
+// app.use('/api/donors', donorRoutes);
+// app.use('/api/emergencies', emergencyRoutes);
+// app.use('/api/inventory', inventoryRoutes);
+// app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 
