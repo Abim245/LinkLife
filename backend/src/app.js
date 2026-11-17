@@ -7,6 +7,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.js';
 import emergencyRoutes from './routes/emergency.js';
 import adminRoutes from './routes/admin.js'
+import donorRoutes from './routes/donor.js';
 const app = express();
 
 app.use(helmet());
@@ -19,7 +20,7 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 // ...
 app.use('/api/auth', authRoutes);
 // Mount routes here as you build them:
-// app.use('/api/donors', donorRoutes);
+app.use('/api/donors', donorRoutes);
 app.use('/api/emergencies', emergencyRoutes);
 // app.use('/api/inventory', inventoryRoutes);
 app.use('/api/admin', adminRoutes);
