@@ -6,6 +6,7 @@ import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.js';
 import emergencyRoutes from './routes/emergency.js';
+import adminRoutes from './routes/admin.js'
 const app = express();
 
 app.use(helmet());
@@ -21,7 +22,7 @@ app.use('/api/auth', authRoutes);
 // app.use('/api/donors', donorRoutes);
 app.use('/api/emergencies', emergencyRoutes);
 // app.use('/api/inventory', inventoryRoutes);
-// app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 
