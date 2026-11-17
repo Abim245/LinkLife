@@ -16,7 +16,7 @@ const userSchema = new Schema(
       radiusKm: { type: Number, default: 15 },
       quietHours: { start: String, end: String },
       location: {
-        type: { type: String, enum: ['Point'], default: 'Point' },
+        type: { type: String, enum: ['Point']},
         coordinates: { type: [Number], default: undefined }, // [lng, lat]
       },
       locationUpdatedAt: Date,
