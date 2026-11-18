@@ -4,7 +4,8 @@ import AlertDelivery from '../models/AlertDelivery.js';
 import Organization from '../models/Organization.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { findMatchingDonors } from '../services/matching.js';
-
+import { alertDonors } from '../services/notification.js';
+import { nextEscalationDate, escalateRequest } from '../services/escalation.js';
 const BLOOD = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export const createSchema = z.object({
@@ -36,6 +37,8 @@ async function buildSummary(request) {
       phone: d.donorId.phone,
       etaMinutes: d.etaMinutes,
     })),
+    escalationRound: request.escalationRound,
+    radiusKm: request.currentRadiusKm,
   };
 }
 
@@ -44,49 +47,19 @@ export const createEmergency = asyncHandler(async (req, res) => {
   if (!org) return res.status(400).json({ message: 'No organization linked to this account' });
   if (!org.verified) return res.status(403).json({ message: 'Organization not verified by admin' });
 
+
   const request = await EmergencyRequest.create({
     ...req.body,
     orgId: org._id,
     location: org.location,
     createdBy: req.user.id,
+    nextEscalationAt: nextEscalationDate(req.body.urgency),
   });
 
-  const matches = await findMatchingDonors(request);
-  const io = req.app.get('io');
+  const result = await alertDonors(req.app.get('io'), request, org.name);
 
-  const deliveries = matches.map(({ donor }) => {
-    const online = io.sockets.adapter.rooms.has(`donor:${donor._id}`);
-    return {
-      requestId: request._id,
-      donorId: donor._id,
-      channel: online ? 'socket' : 'sms',
-      status: online ? 'sent' : 'queued', // queued SMS get sent by the worker later
-      sentAt: online ? new Date() : undefined,
-    };
-  });
-  if (deliveries.length) {
-    await AlertDelivery.insertMany(deliveries, { ordered: false });
-  }
-
-  for (const { donor, distanceKm } of matches) {
-    io.to(`donor:${donor._id}`).emit('emergency:new', {
-      requestId: request._id,
-      hospital: org.name,
-      bloodType: request.bloodType,
-      urgency: request.urgency,
-      unitsNeeded: request.unitsNeeded,
-      distanceKm,
-    });
-  }
-
-  res.status(201).json({
-    request,
-    alerted: matches.length,
-    viaSocket: deliveries.filter((d) => d.channel === 'socket').length,
-    smsQueued: deliveries.filter((d) => d.channel === 'sms').length,
-  });
+  res.status(201).json({ request, ...result });
 });
-
 export const respond = asyncHandler(async (req, res) => {
   const { response, etaMinutes } = req.body;
   const request = await EmergencyRequest.findById(req.params.id);
@@ -159,4 +132,17 @@ export const listEmergencies = asyncHandler(async (req, res) => {
   }
 
   res.json(await EmergencyRequest.find(filter).sort({ createdAt: -1 }).limit(50));
+});
+export const escalateNow = asyncHandler(async (req, res) => {
+  const request = await EmergencyRequest.findById(req.params.id);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
+  if (String(request.orgId) !== String(req.user.orgId)) {
+    return res.status(403).json({ message: 'Not your request' });
+  }
+
+  const result = await escalateRequest(req.app.get('io'), request._id, { force: true });
+  if (!result) {
+    return res.status(409).json({ message: 'Cannot escalate: request is closed or already at max radius' });
+  }
+  res.json(result);
 });

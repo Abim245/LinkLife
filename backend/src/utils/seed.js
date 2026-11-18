@@ -72,15 +72,15 @@ async function seed() {
       donor: {
         bloodType: TYPES[i % TYPES.length],
         available: !unavailable,
-        radiusKm: 15,
         lastDonationAt: onCooldown
           ? new Date(Date.now() - 20 * DAY)
           : i % 2 === 0
           ? new Date(Date.now() - 120 * DAY)
           : undefined, // never donated
+       radiusKm: 60,
         location: {
           type: 'Point',
-          coordinates: jitter(JOS, far ? 40 : 10),
+          coordinates: jitter(JOS, 5 + (i % 5) * 10), // spreads donors from ~5 to ~45 km
         },
         locationUpdatedAt: new Date(),
       },

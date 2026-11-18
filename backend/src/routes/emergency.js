@@ -6,7 +6,7 @@ import {
   createEmergency, respond, closeEmergency, getEmergency, listEmergencies,
   createSchema, respondSchema,
 } from '../controllers/emergency.js';
-
+import { escalateNow } from '../controllers/escalation.js';
 const router = Router();
 router.use(auth);
 
@@ -15,5 +15,5 @@ router.get('/', listEmergencies);
 router.get('/:id', getEmergency);
 router.post('/:id/respond', requireRole('donor'), validate(respondSchema), respond);
 router.patch('/:id/close', requireRole('hospital', 'bloodbank'), closeEmergency);
-
+router.post('/:id/escalate', requireRole('hospital', 'bloodbank'), escalateNow);
 export default router;

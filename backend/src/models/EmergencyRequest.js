@@ -15,6 +15,7 @@ const emergencySchema = new Schema(
     },
     currentRadiusKm: { type: Number, default: 10 },
     escalationRound: { type: Number, default: 0 },
+    nextEscalationAt: Date,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     closedAt: Date,
     notes: String,
