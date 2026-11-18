@@ -146,3 +146,26 @@ export const escalateNow = asyncHandler(async (req, res) => {
   }
   res.json(result);
 });
+
+export const listAlerts = asyncHandler(async (req, res) => {
+  const request = await EmergencyRequest.findById(req.params.id);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
+
+  const isOwner = String(request.orgId) === String(req.user.orgId);
+  if (!isOwner && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+
+  const deliveries = await AlertDelivery.find({ requestId: request._id })
+    .populate('donorId', 'name phone donor.bloodType');
+
+  res.json(
+    deliveries.map((d) => ({
+      donor: d.donorId.name,
+      phone: d.donorId.phone,
+      bloodType: d.donorId.donor?.bloodType,
+      channel: d.channel,
+      status: d.status,
+      response: d.response,
+      etaMinutes: d.etaMinutes,
+    }))
+  );
+});
