@@ -4,9 +4,8 @@ import { requireRole } from '../middleware/roles.js';
 import { validate } from '../middleware/valid.js';
 import {
   createEmergency, respond, closeEmergency, getEmergency, listEmergencies,
-  createSchema, respondSchema,
+  createSchema, respondSchema, escalateNow
 } from '../controllers/emergency.js';
-import { escalateNow } from '../controllers/escalation.js';
 const router = Router();
 router.use(auth);
 
