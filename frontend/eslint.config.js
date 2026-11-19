@@ -17,5 +17,29 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'react-refresh/only-export-components': [
+        'warn',
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            'useAuth',
+            'useBloodData',
+            'DEFAULT_PROFILES',
+            'INITIAL_EMERGENCIES',
+            'INITIAL_INVENTORY',
+            'INITIAL_APPLICATIONS',
+            'INITIAL_USERS',
+            'INITIAL_STOCK_MOVEMENTS',
+            'INITIAL_DONOR_HISTORY',
+            'MOCK_AUDIT_LOG',
+            'MOCK_PENDING_ORGS',
+            'MOCK_SYSTEM_USERS',
+            'DONOR_LOCATIONS',
+          ],
+        },
+      ],
+    },
   },
 ])
