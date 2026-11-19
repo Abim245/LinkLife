@@ -4,10 +4,10 @@ import { env } from '../config/env.js';
 import { registerHandlers } from './handlers.js';
 
 export function initSockets(httpServer) {
+  const allowed = env.clientUrl.split(',').map((s) => s.trim());
   const io = new Server(httpServer, {
-    cors: { origin: env.clientUrl, credentials: true },
+    cors: { origin: allowed, credentials: true },
   });
-
   // Authenticate during handshake
   io.use((socket, next) => {
     try {

@@ -25,4 +25,6 @@ app.use('/api/emergencies', emergencyRoutes);
 
 app.use(errorHandler);
 
+const allowed = env.clientUrl.split(',').map((s) => s.trim());
+app.use(cors({ origin: allowed, credentials: true }));
 export default app;
