@@ -8,11 +8,13 @@ import authRoutes from './routes/auth.js';
 import emergencyRoutes from './routes/emergency.js';
 import adminRoutes from './routes/admin.js'
 import donorRoutes from './routes/donor.js';
+
 const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: env.clientUrl, credentials: true }));
 app.use(express.json());
+app.use(express.static('public'));
 app.use(morgan('dev'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
@@ -24,7 +26,6 @@ app.use('/api/donors', donorRoutes);
 app.use('/api/emergencies', emergencyRoutes);
 // app.use('/api/inventory', inventoryRoutes);
 app.use('/api/admin', adminRoutes);
-
 app.use(errorHandler);
 
 export default app;
