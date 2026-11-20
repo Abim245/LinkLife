@@ -4,17 +4,35 @@ import { Droplet, Building2, Boxes } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BLOOD_TYPES } from '../../utils/compatibility';
 import InteractiveMapMock from '../../components/common/InteractiveMapMock';
+import { normalizePhone } from '../../lib/format';
+const getPosition = () =>
+  new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('Location is not available on this device'));
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve([pos.coords.longitude, pos.coords.latitude]), // [lng, lat]
+      () => reject(new Error('Allow location access so we can place your organization on the map')),
+      { timeout: 10000 }
+    );
+  });
 
+const apiError = (err) => {
+  const d = err.response?.data;
+  if (d?.errors?.length) return d.errors.map((x) => `${x.field}: ${x.message}`).join(', ');
+  return d?.message || err.message || 'Something went wrong';
+};
 export const RegisterPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { login } = useAuth();
-
+  const { registerWithApi } = useAuth();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const roleParam = searchParams.get('role');
   const [selectedRole, setSelectedRole] = useState(
     roleParam && ['donor', 'hospital', 'bloodbank'].includes(roleParam) ? roleParam : 'donor'
   );
-
+  const [adminStats, setAdminStats] = useState({ verifiedOrgs: 24, donors: 1420 });
+  
   // Form states for donor
   const [donorForm, setDonorForm] = useState({
     fullName: '',
@@ -40,28 +58,84 @@ export const RegisterPage = () => {
     isAuthorized: true,
     agreeTerms: true,
   });
+  const handleApprove = async () => {
+  try {
+    await updateApplicationStatus(selectedApp.id, 'APPROVED');
+    setActionSuccess(`Approved ${selectedApp.name}!`);
+    setTimeout(() => setActionSuccess(''), 3000);
+  } catch (err) {
+    alert(err.response?.data?.message || 'Could not approve this organization');
+  }
+  };
+ const handleDonorSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+  try {
+    const phone = normalizePhone(donorForm.phone);
+    if (currentUser.role === 'admin') {
+  const { data: ov } = await api.get('/admin/overview');
+  const apps = ov.applications.map((a) => ({
+    ...a,
+    submittedAt: new Date(a.submittedAt).toLocaleString(),
+  }));
+  setApplications(apps);
+  setSelectedAppId((apps.find((a) => a.status === 'PENDING') || apps[0])?.id || null);
+  setAdminStats(ov.stats);
+  }
+    // Location is optional for donors: they can set it later from the dashboard
+    let location;
+    if (donorForm.consentLocation) {
+      try {
+        location = { coordinates: await getPosition() };
+      } catch {
+        /* continue without it */
+      }
+    }
 
-  const handleDonorSubmit = (e) => {
-    e.preventDefault();
-    login('donor', {
-      name: donorForm.fullName || 'Lucas Miller',
-      phone: donorForm.phone || '+1 (555) 234-5678',
-      bloodType: donorForm.bloodType || 'O-',
+    await registerWithApi({
+      role: 'donor',
+      name: donorForm.fullName,
+      phone,
+      password: donorForm.password,
+      bloodType: donorForm.bloodType,
+      ...(location && { location }),
     });
-    navigate('/verify-phone?phone=' + encodeURIComponent(donorForm.phone || '+1 (555) 234-5678'));
+    navigate(`/verify-phone?phone=${encodeURIComponent(phone)}&role=donor`);
+  } catch (err) {
+    setError(apiError(err));
+  } finally {
+    setLoading(false);
+  }
   };
 
-  const handleOrgSubmit = (e) => {
-    e.preventDefault();
-    login(selectedRole, {
-      orgName: orgForm.orgName || (selectedRole === 'hospital' ? 'St. Jude Emergency Hospital' : 'Metropolitan Blood Center'),
-      coordinatorName: orgForm.contactName || 'Dr. Sarah Vance',
-      registrationNumber: orgForm.licenseNumber || 'HOSP-NY-84920',
-      address: orgForm.address || '450 1st Avenue, Manhattan, NY',
-    });
-    navigate('/application-status');
-  };
+  const handleOrgSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+  try {
+    const phone = normalizePhone(orgForm.phone247);
+    const coordinates = await getPosition(); // required: this is where donors are searched from
 
+    await registerWithApi({
+      role: selectedRole,
+      name: orgForm.contactName,
+      phone,
+      password: orgForm.password,
+      orgName: orgForm.orgName,
+      address: orgForm.address,
+      location: { coordinates },
+      registrationNumber: orgForm.licenseNumber, 
+      jobTitle: orgForm.jobTitle, 
+      email: orgForm.officialEmail,
+    });
+    navigate(`/verify-phone?phone=${encodeURIComponent(phone)}&role=${selectedRole}`);
+  } catch (err) {
+    setError(apiError(err));
+  } finally {
+    setLoading(false);
+  }
+  };
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#FAF9F8]">
       {/* Left Maroon Hero Panel (UI/UX Page 3 & 5 exact layout) */}
@@ -306,14 +380,18 @@ export const RegisterPage = () => {
                 </label>
               </div>
 
-              <div className="pt-4">
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors"
-                >
-                  Continue
-                </button>
-              </div>
+             <div className="pt-4 space-y-3">
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">{error}</div>
+              )}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors disabled:opacity-60"
+              >
+                {loading ? 'Creating account...' : 'Continue'}
+              </button>
+            </div>
             </form>
           ) : (
             /* ORGANIZATION (HOSPITAL / BLOOD BANK) SIGN UP FORM (Page 5) */
@@ -510,14 +588,18 @@ export const RegisterPage = () => {
                 </label>
               </div>
 
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors"
-                >
-                  Submit for review
-                </button>
-              </div>
+             <div className="pt-4 space-y-3">
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">{error}</div>
+              )}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors disabled:opacity-60"
+              >
+                {submitting ? 'Creating account...' : 'Continue'}
+              </button>
+            </div>
             </form>
           )}
 

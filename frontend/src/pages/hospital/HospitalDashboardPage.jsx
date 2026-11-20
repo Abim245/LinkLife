@@ -20,8 +20,9 @@ export const HospitalDashboardPage = () => {
     widenRadius,
   } = useBloodData();
 
-  // Active emergency (e.g. emg-001)
-  const activeEmergency = emergencies.find((e) => e.status === 'LIVE') || emergencies[0];
+  // Active emergency (null when the hospital has none yet)
+  const activeEmergency =
+    emergencies.find((e) => e.status === 'LIVE') || emergencies[0] || null;
 
   // Quick Declare Emergency Form State
   const [formBloodType, setFormBloodType] = useState('O-');
@@ -29,19 +30,31 @@ export const HospitalDashboardPage = () => {
   const [formNeededBy, setFormNeededBy] = useState('ASAP (under 45 min)');
   const [formUrgency, setFormUrgency] = useState('Critical');
   const [formNotes, setFormNotes] = useState('');
-  const [alertSuccess, setAlertSuccess] = useState(false);
 
-  const handleDeclareSubmit = (e) => {
+  const [alertSuccess, setAlertSuccess] = useState(false);
+  const [alertCount, setAlertCount] = useState(0);
+  const [alertError, setAlertError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleDeclareSubmit = async (e) => {
     e.preventDefault();
-    declareEmergency({
-      bloodType: formBloodType,
-      unitsNeeded: formUnits,
-      neededBy: formNeededBy,
-      urgency: formUrgency,
-      notes: formNotes,
-    });
-    setAlertSuccess(true);
-    setTimeout(() => setAlertSuccess(false), 4000);
+    setAlertError('');
+    setSubmitting(true);
+    try {
+      const created = await declareEmergency({
+        bloodType: formBloodType,
+        unitsNeeded: formUnits,
+        urgency: formUrgency,
+        notes: formNotes,
+      });
+      setAlertCount(created.donorsAlerted);
+      setAlertSuccess(true);
+      setTimeout(() => setAlertSuccess(false), 4000);
+    } catch (err) {
+      setAlertError(err.response?.data?.message || 'Could not declare the emergency');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -53,7 +66,11 @@ export const HospitalDashboardPage = () => {
             <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
               Dashboard
             </h1>
-            <p className="text-sm text-stone-600 mt-1">One emergency is active right now.</p>
+            <p className="text-sm text-stone-600 mt-1">
+              {activeEmergency && activeEmergency.status === 'LIVE'
+                ? 'One emergency is active right now.'
+                : 'No emergency is active right now.'}
+            </p>
           </div>
           <button
             onClick={() => {
@@ -69,122 +86,135 @@ export const HospitalDashboardPage = () => {
 
         {/* Top 2 Cards: Active Emergency (Left) and Declare Emergency (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Active Emergency Live Card (Page 7 left card) */}
-          <div className="lg:col-span-7 bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-6">
-            {/* Live Pill and Time */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <StatusPill status="LIVE" />
-              <span className="text-xs text-stone-500 font-medium">
-                Declared {activeEmergency.declaredAt} · needed by {activeEmergency.neededBy}
-              </span>
-            </div>
-
-            {/* Blood Type & Units */}
-            <div className="flex items-start gap-4">
-              <BloodBadge type={activeEmergency.bloodType} size="lg" />
-              <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-stone-900">
-                  {activeEmergency.unitsNeeded} units needed
-                </h2>
-                <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
-                  {activeEmergency.donorsAlerted} donors alerted within {activeEmergency.currentRadiusKm} km
-                </p>
-              </div>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold text-stone-700">
-                <span>
-                  {activeEmergency.unitsConfirmed} of {activeEmergency.unitsNeeded} donors confirmed
-                </span>
-                <span className="text-[#B81D24]">
-                  {Math.round((activeEmergency.unitsConfirmed / activeEmergency.unitsNeeded) * 100)}%
+          {/* Active Emergency Live Card */}
+          {activeEmergency ? (
+            <div className="lg:col-span-7 bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-6">
+              {/* Status Pill and Time */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <StatusPill status={activeEmergency.status} />
+                <span className="text-xs text-stone-500 font-medium">
+                  Declared {activeEmergency.declaredAt} · needed by {activeEmergency.neededBy}
                 </span>
               </div>
-              <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#B81D24] rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      (activeEmergency.unitsConfirmed / activeEmergency.unitsNeeded) * 100
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
 
-            {/* Donor Responder Table */}
-            <div className="border border-stone-200 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[#FAF9F8] text-stone-600 font-semibold border-b border-stone-200">
-                    <tr>
-                      <th className="py-2.5 px-3">Donor</th>
-                      <th className="py-2.5 px-3">Type</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">ETA</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100 text-stone-800">
-                    {activeEmergency.responders.map((r, i) => (
-                      <tr key={r.id || i} className="hover:bg-stone-50/60">
-                        <td className="py-3 px-3 font-medium">{r.name}</td>
-                        <td className="py-3 px-3 font-bold text-[#B81D24]">{r.bloodType}</td>
-                        <td className="py-3 px-3">
-                          <StatusPill status={r.status} size="xs" />
-                        </td>
-                        <td className="py-3 px-3 font-semibold text-stone-700">{r.eta}</td>
+              {/* Blood Type & Units */}
+              <div className="flex items-start gap-4">
+                <BloodBadge type={activeEmergency.bloodType} size="lg" />
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-stone-900">
+                    {activeEmergency.unitsNeeded} units needed
+                  </h2>
+                  <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
+                    {activeEmergency.donorsAlerted} donors alerted within {activeEmergency.currentRadiusKm} km
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold text-stone-700">
+                  <span>
+                    {activeEmergency.unitsConfirmed} of {activeEmergency.unitsNeeded} donors confirmed
+                  </span>
+                  <span className="text-[#B81D24]">
+                    {Math.round((activeEmergency.unitsConfirmed / activeEmergency.unitsNeeded) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#B81D24] rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (activeEmergency.unitsConfirmed / activeEmergency.unitsNeeded) * 100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Donor Responder Table */}
+              <div className="border border-stone-200 rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#FAF9F8] text-stone-600 font-semibold border-b border-stone-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Donor</th>
+                        <th className="py-2.5 px-3">Type</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">ETA</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100 text-stone-800">
+                      {activeEmergency.responders.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-4 px-3 text-center text-stone-500">
+                            No responses yet.
+                          </td>
+                        </tr>
+                      )}
+                      {activeEmergency.responders.map((r, i) => (
+                        <tr key={r.id || i} className="hover:bg-stone-50/60">
+                          <td className="py-3 px-3 font-medium">{r.name}</td>
+                          <td className="py-3 px-3 font-bold text-[#B81D24]">{r.bloodType}</td>
+                          <td className="py-3 px-3">
+                            <StatusPill status={r.status} size="xs" />
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-stone-700">{r.eta}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
 
-            {/* Escalation Bar Box */}
-            <div className="bg-[#FAF3F1] border border-red-100 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-              <div className="text-stone-700">
-                Searching within <strong className="text-stone-900">{activeEmergency.currentRadiusKm} km</strong>. Widening to 25 km in{' '}
-                <strong className="text-[#B81D24]">[{activeEmergency.wideningIn}]</strong>.
-              </div>
-              <button
-                onClick={() => widenRadius(activeEmergency.id)}
-                className="px-3.5 py-1.5 rounded-md bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 font-semibold text-xs shadow-xs transition-colors shrink-0"
-              >
-                Widen now
-              </button>
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-100">
-              <div className="flex items-center gap-2">
+              {/* Escalation Bar Box */}
+              <div className="bg-[#FAF3F1] border border-red-100 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="text-stone-700">
+                  Searching within <strong className="text-stone-900">{activeEmergency.currentRadiusKm} km</strong>.
+                  {' '}Wider search: <strong className="text-[#B81D24]">{activeEmergency.wideningIn}</strong>
+                </div>
                 <button
-                  onClick={() => updateEmergencyStatus(activeEmergency.id, 'FULFILLED')}
-                  className="px-4 py-2 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white text-xs font-semibold shadow-xs transition-colors"
+                  onClick={() => widenRadius(activeEmergency.id)}
+                  className="px-3.5 py-1.5 rounded-md bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 font-semibold text-xs shadow-xs transition-colors shrink-0"
                 >
-                  Mark fulfilled
-                </button>
-                <button
-                  onClick={() => updateEmergencyStatus(activeEmergency.id, 'CLOSED')}
-                  className="px-4 py-2 rounded-lg bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold border border-stone-300 transition-colors"
-                >
-                  Close request
+                  Widen now
                 </button>
               </div>
 
-              <Link
-                to={`/hospital/emergencies/${activeEmergency.id}`}
-                className="text-xs font-semibold text-[#B81D24] hover:underline flex items-center gap-1"
-              >
-                <span>Full live radar view</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
+              {/* Bottom Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-100">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => updateEmergencyStatus(activeEmergency.id, 'FULFILLED')}
+                    className="px-4 py-2 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white text-xs font-semibold shadow-xs transition-colors"
+                  >
+                    Mark fulfilled
+                  </button>
+                  <button
+                    onClick={() => updateEmergencyStatus(activeEmergency.id, 'CLOSED')}
+                    className="px-4 py-2 rounded-lg bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold border border-stone-300 transition-colors"
+                  >
+                    Close request
+                  </button>
+                </div>
 
-          {/* Quick Declare Emergency Form (Page 7 right card) */}
+                <Link
+                  to={`/hospital/emergencies/${activeEmergency.id}`}
+                  className="text-xs font-semibold text-[#B81D24] hover:underline flex items-center gap-1"
+                >
+                  <span>Full live radar view</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="lg:col-span-7 bg-white rounded-2xl p-7 border border-stone-200/80 shadow-xs text-sm text-stone-600">
+              No active emergency. Use the form to declare one.
+            </div>
+          )}
+
+          {/* Quick Declare Emergency Form */}
           <div
             id="declare-form"
             className="lg:col-span-5 bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-5"
@@ -197,7 +227,13 @@ export const HospitalDashboardPage = () => {
             {alertSuccess && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Emergency declared! Matching donors in range alerted.</span>
+                <span>Emergency declared! {alertCount} matching donors alerted.</span>
+              </div>
+            )}
+
+            {alertError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+                {alertError}
               </div>
             )}
 
@@ -298,20 +334,21 @@ export const HospitalDashboardPage = () => {
 
               {/* Helper text */}
               <div className="text-[11px] text-stone-500">
-                About 28 eligible donors within 10 km will be alerted.
+                Eligible donors in range are alerted instantly.
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors active:scale-95"
+                disabled={submitting}
+                className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors active:scale-95 disabled:opacity-60"
               >
-                Send alert now
+                {submitting ? 'Sending...' : 'Send alert now'}
               </button>
             </form>
           </div>
         </div>
 
-        {/* Inventory Section (Page 7) */}
+        {/* Inventory Section */}
         <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-5">
           <div className="flex items-center justify-between">
             <div>
@@ -357,7 +394,7 @@ export const HospitalDashboardPage = () => {
           </div>
         </div>
 
-        {/* Recent Requests Section (Page 7) */}
+        {/* Recent Requests Section */}
         <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-5">
           <div className="flex items-center justify-between">
             <div>
@@ -387,6 +424,13 @@ export const HospitalDashboardPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-stone-800">
+                  {emergencies.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-4 px-4 text-center text-stone-500">
+                        No requests yet.
+                      </td>
+                    </tr>
+                  )}
                   {emergencies.slice(0, 4).map((e) => (
                     <tr key={e.id} className="hover:bg-stone-50/60">
                       <td className="py-3 px-4 font-bold text-[#B81D24] text-sm">{e.bloodType}</td>

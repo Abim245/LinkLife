@@ -1,5 +1,42 @@
 import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { api } from '../lib/api';
+import { useAuth } from './AuthContext';
+import { connectSocket, disconnectSocket } from '../lib/socket';
 
+const URGENCY_LABEL = { critical: 'Critical', urgent: 'Urgent', standard: 'Standard' };
+const STATUS_LABEL = { open: 'LIVE', fulfilled: 'FULFILLED', closed: 'CLOSED', expired: 'EXPIRED' };
+
+const mapEmergency = (r, fallbackHospital = '') => ({
+  id: r._id,
+  hospitalName: r.orgId?.name || fallbackHospital,
+  coordinatorName: '',
+  bloodType: r.bloodType,
+  unitsNeeded: r.unitsNeeded,
+  unitsConfirmed: 0,
+  urgency: URGENCY_LABEL[r.urgency] || 'Urgent',
+  status: STATUS_LABEL[r.status] || 'LIVE',
+  declaredAt: new Date(r.createdAt).toLocaleString(),
+  neededBy: r.neededBy ? new Date(r.neededBy).toLocaleString() : 'ASAP',
+  distanceKm: null,
+  currentRadiusKm: r.currentRadiusKm,
+  wideningIn: '—',
+  notes: r.notes || '',
+  donorsAlerted: 0,
+  responders: [],
+  activityLog: [],
+});
+
+// Shape of the live 'emergency:new' socket event
+const mapAlert = (a) => ({
+  ...mapEmergency(
+    { _id: a.requestId, bloodType: a.bloodType, unitsNeeded: a.unitsNeeded, urgency: a.urgency, status: 'open', createdAt: new Date() },
+    a.hospital
+  ),
+  distanceKm: a.distanceKm,
+});
+
+const statusFor = (units, low) => (units <= low ? 'LOW' : units <= low + 2 ? 'WATCH' : 'OK');
 const BloodDataContext = createContext(null);
 
 export const INITIAL_INVENTORY = [
@@ -192,6 +229,7 @@ export const INITIAL_DONOR_HISTORY = [
 ];
 
 export const BloodDataProvider = ({ children }) => {
+  const { currentUser } = useAuth();
   const [emergencies, setEmergencies] = useState(INITIAL_EMERGENCIES);
   const [inventory, setInventory] = useState(INITIAL_INVENTORY);
   const [applications, setApplications] = useState(INITIAL_APPLICATIONS);
@@ -203,85 +241,128 @@ export const BloodDataProvider = ({ children }) => {
   // Active donor emergency response state
   const [donorAlertResponse, setDonorAlertResponse] = useState(null);
   const [selectedEta, setSelectedEta] = useState('20 min');
-
-  // Radius widening state for active emergency
-  const widenRadius = (emergencyId) => {
+const refreshEmergency = async (id) => {
+  try {
+    const { data } = await api.get(`/emergencies/${id}/alerts`);
+    const responders = data.map((a, i) => ({
+      id: `${id}-${i}`,
+      name: a.donor,
+      bloodType: a.bloodType,
+      status: a.response === 'accepted' ? 'ON THE WAY' : a.response === 'declined' ? 'DECLINED' : 'AWAITING REPLY',
+      eta: a.etaMinutes ? `${a.etaMinutes} min` : '—',
+    }));
     setEmergencies((prev) =>
       prev.map((e) =>
-        e.id === emergencyId
-          ? {
-              ...e,
-              currentRadiusKm: 25,
-              wideningIn: 'Widened to 25 km',
-              donorsAlerted: e.donorsAlerted + 24,
-              activityLog: [
-                { time: 'Just now', text: 'Search radius expanded to 25 km (+24 donors alerted)' },
-                ...e.activityLog,
-              ],
-            }
+        e.id === id
+          ? { ...e, donorsAlerted: data.length, unitsConfirmed: responders.filter((r) => r.status === 'ON THE WAY').length, responders }
           : e
       )
     );
+  } catch {
+    /* donors aren't allowed to read the alert list */
+  }
   };
 
-  // Declare new emergency
-  const declareEmergency = (newEmergency) => {
-    const created = {
-      id: `emg-${Date.now().toString().slice(-4)}`,
-      hospitalName: newEmergency.hospitalName || 'St. Jude Emergency Hospital',
-      coordinatorName: newEmergency.coordinatorName || 'Dr. Sarah Vance',
-      bloodType: newEmergency.bloodType || 'O-',
-      unitsNeeded: Number(newEmergency.unitsNeeded) || 4,
-      unitsConfirmed: 0,
-      urgency: newEmergency.urgency || 'Critical',
-      status: 'LIVE',
-      declaredAt: 'Just now',
-      neededBy: newEmergency.neededBy || 'ASAP (under 45 min)',
-      distanceKm: 2.4,
-      currentRadiusKm: 10,
-      wideningIn: '05:00',
-      notes: newEmergency.notes || '',
-      donorsAlerted: 28,
-      responders: [],
-      activityLog: [{ time: 'Just now', text: `Emergency declared for ${newEmergency.unitsNeeded || 4} units of ${newEmergency.bloodType || 'O-'}` }],
-    };
+  useEffect(() => {
+  const token = localStorage.getItem('token');
+  if (!token || !currentUser?.id) return; // mock users keep the mock data
+
+  (async () => {
+    try {
+      const { data } = await api.get('/emergencies');
+      const mapped = data.map((r) => mapEmergency(r, currentUser.orgName));
+      setEmergencies(mapped);
+      mapped.filter((e) => e.status === 'LIVE').forEach((e) => refreshEmergency(e.id));
+
+      if (['hospital', 'bloodbank'].includes(currentUser.role)) {
+        const { data: inv } = await api.get('/inventory');
+        setInventory(
+          inv.stock.map((s) => ({
+            type: s.bloodType,
+            units: s.units,
+            lowThreshold: inv.lowThreshold,
+            status: statusFor(s.units, inv.lowThreshold),
+            lastChanged: '—',
+          }))
+        );
+      }
+    } catch (err) {
+      console.error('Load failed:', err.message);
+    }
+  })();
+
+  const socket = connectSocket(token);
+  socket.on('emergency:new', (a) =>
+    setEmergencies((prev) => (prev.some((e) => e.id === a.requestId) ? prev : [mapAlert(a), ...prev]))
+  );
+  socket.on('emergency:update', (u) => {
+    setEmergencies((prev) =>
+      prev.map((e) =>
+        e.id === u.requestId
+          ? { ...e, status: STATUS_LABEL[u.status] || e.status, currentRadiusKm: u.radiusKm ?? e.currentRadiusKm }
+          : e
+      )
+    );
+    refreshEmergency(u.requestId);
+  });
+  socket.on('emergency:closed', (c) =>
+    setEmergencies((prev) =>
+      prev.map((e) => (e.id === c.requestId ? { ...e, status: STATUS_LABEL[c.reason] || 'CLOSED' } : e))
+    )
+  );
+
+  return () => disconnectSocket();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+  const widenRadius = async (id) => {
+  try {
+    const { data } = await api.post(`/emergencies/${id}/escalate`);
+    setEmergencies((prev) =>
+      prev.map((e) =>
+        e.id === id
+          ? { ...e, currentRadiusKm: data.radiusKm, wideningIn: `Widened to ${data.radiusKm} km`, donorsAlerted: e.donorsAlerted + data.alerted }
+          : e
+      )
+    );
+  } catch (err) {
+    alert(err.response?.data?.message || 'Could not widen the radius');
+  }
+  };
+
+  const declareEmergency = async (form) => {
+    const { data } = await api.post('/emergencies', {
+      bloodType: form.bloodType,
+      unitsNeeded: Number(form.unitsNeeded),
+      urgency: String(form.urgency || 'urgent').toLowerCase(),
+      ...(form.notes && { notes: form.notes }),
+    });
+    const created = { ...mapEmergency(data.request, currentUser?.orgName), donorsAlerted: data.alerted };
     setEmergencies((prev) => [created, ...prev]);
     return created;
   };
 
-  // Close or fulfill emergency
-  const updateEmergencyStatus = (emergencyId, status) => {
-    setEmergencies((prev) =>
-      prev.map((e) => (e.id === emergencyId ? { ...e, status } : e))
-    );
-  };
-
-  // Donor accepts or declines
-  const respondToEmergency = (emergencyId, response, etaMinutes = '20 min') => {
-    setDonorAlertResponse({ status: response, eta: etaMinutes });
-    if (response === 'ACCEPTED') {
-      setEmergencies((prev) =>
-        prev.map((e) => {
-          if (e.id === emergencyId) {
-            const updatedResponders = [
-              { id: 'me', name: 'Lucas M. (You)', bloodType: 'O-', status: 'ON THE WAY', eta: etaMinutes },
-              ...e.responders,
-            ];
-            return {
-              ...e,
-              unitsConfirmed: Math.min(e.unitsNeeded, e.unitsConfirmed + 1),
-              responders: updatedResponders,
-              activityLog: [
-                { time: 'Just now', text: `You accepted with an ETA of ${etaMinutes}` },
-                ...e.activityLog,
-              ],
-            };
-          }
-          return e;
-        })
-      );
+  const updateEmergencyStatus = async (id, status) => {
+    try {
+      await api.patch(`/emergencies/${id}/close`, { fulfilled: status === 'FULFILLED' });
+      setEmergencies((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not update the request');
     }
   };
+
+ const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
+  try {
+    await api.post(`/emergencies/${id}/respond`, {
+      response: response === 'ACCEPTED' ? 'accepted' : 'declined',
+      ...(response === 'ACCEPTED' && { etaMinutes: parseInt(etaMinutes, 10) || 20 }),
+    });
+    setDonorAlertResponse({ status: response, eta: etaMinutes });
+    return true;
+  } catch (err) {
+    alert(err.response?.data?.message || 'Could not send your response');
+    return false;
+  }
+};
 
   // Adjust stock units
   const adjustStock = (bloodType, delta) => {
@@ -305,6 +386,9 @@ export const BloodDataProvider = ({ children }) => {
         return item;
       })
     );
+    if (localStorage.getItem('token') && currentUser?.id) {
+  api.patch('/inventory', { bloodType, change: delta }).catch(() => {});
+  }
   };
 
   // Record stock movement

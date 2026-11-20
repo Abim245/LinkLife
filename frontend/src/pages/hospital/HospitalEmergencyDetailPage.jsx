@@ -5,7 +5,7 @@ import BloodBadge from '../../components/common/BloodBadge';
 import StatusPill from '../../components/common/StatusPill';
 import InteractiveMapMock from '../../components/common/InteractiveMapMock';
 import { useBloodData } from '../../context/BloodDataContext';
-
+import {api} from '../../lib/api';
 export const HospitalEmergencyDetailPage = () => {
   const { id } = useParams();
   const { emergencies, updateEmergencyStatus, widenRadius } = useBloodData();
@@ -20,6 +20,19 @@ export const HospitalEmergencyDetailPage = () => {
     return true;
   });
 
+
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    try {
+      const { data } = await api.post(`/emergencies/${requestId}/respond`, { response: 'accepted', etaMinutes: 15 });
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user)); // role, orgId, name
+      // then navigate by data.user.role: donor -> donor home, hospital -> dashboard
+    } catch (err) {
+      setError(err.response?.data?.message || 'Request failed');
+    }
+  }
   return (
     <div className="min-h-screen bg-[#FAF9F8]">
       {/* Top Bar with Back Link */}

@@ -2,19 +2,32 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Droplet } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { normalizePhone } from '../../lib/format';
+
+const HOME = { donor: '/donor', hospital: '/hospital', bloodbank: '/bloodbank', admin: '/admin' };
 
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, switchRole } = useAuth();
+  const { loginWithApi, switchRole } = useAuth();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [keepSignedIn, setKeepSignedIn] = useState(true);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    login('hospital');
-    navigate('/hospital');
+    setError('');
+    setLoading(true);
+    try {
+      const user = await loginWithApi(normalizePhone(identifier), password);
+      navigate(HOME[user.role] || '/');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed. Check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleQuickLogin = (role, path) => {
@@ -68,13 +81,13 @@ export const LoginPage = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-stone-700 mb-1.5">
-                Email or phone number
+                 phone number
               </label>
               <input
                 type="text"
                 required
-                placeholder="you@example.com or +1 (555) 000-0000"
-                value={identifier}
+                 placeholder="+2348012345678"                
+                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] focus:border-transparent bg-white"
               />
@@ -111,13 +124,18 @@ export const LoginPage = () => {
                 <span className="text-xs text-stone-600">Keep me signed in on this device</span>
               </label>
             </div>
-
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+                {error}
+              </div>
+            )}
             <div className="pt-2">
               <button
                 type="submit"
-                className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors"
+                disabled={loading}
+                className="... (keep your classes) disabled:opacity-60"
               >
-                Log in
+                {loading ? 'Logging in...' : 'Log in'}
               </button>
             </div>
 

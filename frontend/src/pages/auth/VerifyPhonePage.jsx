@@ -2,13 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Droplet } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-
+import { api } from '../../lib/api';
 export const VerifyPhonePage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { verifyOtpWithApi } = useAuth();
 
-  const phone = searchParams.get('phone') || currentUser?.phone || '+1 (555) 234-5678';
+  const phone = searchParams.get('phone') || '';
+  const role = searchParams.get('role');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(30);
   const inputRefs = useRef([]);
@@ -49,14 +52,31 @@ export const VerifyPhonePage = () => {
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (currentUser?.role === 'donor') {
-      navigate('/donor');
-    } else {
-      navigate('/hospital');
-    }
-  };
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  const joined = code.join('');
+  if (joined.length < 6) return setError('Enter all 6 digits');
+  setError('');
+  setLoading(true);
+  try {
+    await verifyOtpWithApi(phone, joined);
+    navigate(role === 'hospital' || role === 'bloodbank' ? '/application-status' : '/login');
+  } catch (err) {
+    setError(err.response?.data?.message || 'Could not verify the code');
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleResend = async () => {
+  try {
+    await api.post('/auth/otp/resend', { phone });
+    setError('');
+    setTimer(30);
+  } catch {
+    setError('Could not resend the code');
+  }
+};
 
   return (
     <div className="min-h-screen bg-[#FAF9F8] flex flex-col justify-between">
@@ -100,11 +120,15 @@ export const VerifyPhonePage = () => {
                 />
               ))}
             </div>
-
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">{error}</div>
+            )}
             <button
               type="submit"
+              disabled={loading}
               className="w-full py-3.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors active:scale-95"
-            >
+              >
+              {loading ? 'Verifying...' : 'Verify and continue'}
               Verify and continue
             </button>
           </form>
@@ -117,7 +141,7 @@ export const VerifyPhonePage = () => {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setTimer(30)}
+                  onClick={handleResend}
                   className="text-[#B81D24] font-semibold hover:underline"
                 >
                   Resend code now

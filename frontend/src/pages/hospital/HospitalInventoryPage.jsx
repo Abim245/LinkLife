@@ -4,7 +4,7 @@ import { ArrowLeft, AlertTriangle, Download, Check, Plus, Minus } from 'lucide-r
 import StatusPill from '../../components/common/StatusPill';
 import { useBloodData } from '../../context/BloodDataContext';
 import { BLOOD_TYPES } from '../../utils/compatibility';
-
+import { api } from '../lib/api';
 export const HospitalInventoryPage = () => {
   const navigate = useNavigate();
   const { inventory, adjustStock, stockMovements, recordMovement } = useBloodData();
@@ -35,7 +35,15 @@ export const HospitalInventoryPage = () => {
     if (movementFilter === 'REMOVED') return m.change < 0;
     return true;
   });
-
+  async function handleInventory(e) {
+      e.preventDefault();
+      try {
+        const { data } = await api.get(`/emergencies/${id}`);
+        const { data: stock } = await api.get('/inventory');
+      } catch (err) {
+        setError(err.response?.data?.message || 'Login failed');
+      }
+    }
   return (
     <div className="min-h-screen bg-[#FAF9F8]">
       {/* Top Bar with Back Link */}

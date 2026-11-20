@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-
+import { api } from '../lib/api';
+import { disconnectSocket } from '../lib/socket';
 const AuthContext = createContext(null);
 
 export const DEFAULT_PROFILES = {
@@ -106,13 +107,52 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    setCurrentUser(null);
+  setCurrentUser(null);
+  localStorage.removeItem('token');
+  disconnectSocket();
   };
 
   const updateProfile = (data) => {
     setCurrentUser((prev) => ({ ...prev, ...data }));
   };
+  const loginWithApi = async (phone, password) => {
+    const { data } = await api.post('/auth/login', { phone, password });
+    localStorage.setItem('token', data.token); // api.js reads this key
 
+    const base = DEFAULT_PROFILES[data.user.role] || {};
+    let user = {
+      ...base,
+      id: data.user.id,
+      role: data.user.role,
+      name: data.user.name,
+      phone,
+      orgId: data.user.orgId,
+      orgName: data.user.orgName || base.orgName,
+      phoneVerified: data.user.phoneVerified,
+    };
+
+    if (data.user.role === 'donor') {
+      const { data: me } = await api.get('/donors/me');
+      user = {
+        ...user,
+        bloodType: me.donor?.bloodType,
+        availableForAlerts: me.donor?.available,
+        alertRadius: me.donor?.radiusKm,
+        lastDonationDate: me.donor?.lastDonationAt,
+      };
+    }
+
+    setCurrentUser(user);
+    return user;
+  };
+
+  const registerWithApi = async (payload) => (await api.post('/auth/register', payload)).data;
+
+  const verifyOtpWithApi = async (phone, code) => {
+    const { data } = await api.post('/auth/otp/verify', { phone, code });
+    localStorage.setItem('token', data.token);
+    return data;
+  };
   return (
     <AuthContext.Provider
       value={{
@@ -122,6 +162,9 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         updateProfile,
+        loginWithApi,
+        registerWithApi,
+        verifyOtpWithApi,
       }}
     >
       {children}

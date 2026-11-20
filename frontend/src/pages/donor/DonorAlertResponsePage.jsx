@@ -8,21 +8,38 @@ export const DonorAlertResponsePage = () => {
   const navigate = useNavigate();
   const { emergencies, respondToEmergency } = useBloodData();
 
-  const emergency = emergencies.find((e) => e.id === id) || emergencies[0];
+ const emergency = emergencies.find((e) => e.id === id);
   const [selectedEta, setSelectedEta] = useState('20 min');
   const [confirmed, setConfirmed] = useState(false);
   const [declined, setDeclined] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  const handleAccept = () => {
-    respondToEmergency(emergency.id, 'ACCEPTED', selectedEta);
-    setConfirmed(true);
-  };
+    const handleAccept = async () => {
+      setSending(true);
+      const ok = await respondToEmergency(emergency.id, 'ACCEPTED', selectedEta);
+      setSending(false);
+      if (ok) setConfirmed(true);
+    };
 
-  const handleDecline = () => {
-    respondToEmergency(emergency.id, 'DECLINED');
-    setDeclined(true);
-  };
+    const handleDecline = async () => {
+      setSending(true);
+      const ok = await respondToEmergency(emergency.id, 'DECLINED');
+      setSending(false);
+      if (ok) setDeclined(true);
+    };
 
+  if (!emergency) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FAF9F8] p-6 text-center">
+        <div className="space-y-3">
+          <p className="text-sm text-stone-600">This alert is no longer available.</p>
+          <Link to="/donor" className="text-sm font-semibold text-[#B81D24] hover:underline">
+            Back to donor home
+          </Link>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-[#FAF9F8] flex flex-col justify-between">
       {/* Top Bar with Brand */}

@@ -9,7 +9,7 @@ import StatusPill from '../../components/common/StatusPill';
 import InteractiveMapMock from '../../components/common/InteractiveMapMock';
 import { useAuth } from '../../context/AuthContext';
 import { useBloodData } from '../../context/BloodDataContext';
-
+import {api} from '../../lib/api';
 export const DonorDashboardPage = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -21,7 +21,10 @@ export const DonorDashboardPage = () => {
   } = useBloodData();
 
   const donor = currentUser || {};
-  const activeAlert = emergencies.find((e) => e.status === 'LIVE') || emergencies[0];
+  const activeAlert = emergencies.find((e) => e.status === 'LIVE') || null;
+  const distanceText =
+  activeAlert?.distanceKm != null ? `${activeAlert.distanceKm} km away` : 'Nearby';
+
 
   const [availableForAlerts, setAvailableForAlerts] = useState(donor.availableForAlerts ?? true);
   const [radiusKm, setRadiusKm] = useState(donor.alertRadius ?? 15);
@@ -32,10 +35,26 @@ export const DonorDashboardPage = () => {
   );
   const [smsAlerts, setSmsAlerts] = useState(donor.smsAlerts ?? true);
   const [locationUpdated, setLocationUpdated] = useState(false);
-
+  const saveDonorSettings = (data) => {
+  if (!donor.id) return; // demo users have no account
+  api.patch('/donors/me', data).catch(() => {});
+  };
   const handleUpdateLocation = () => {
-    setLocationUpdated(true);
-    setTimeout(() => setLocationUpdated(false), 3000);
+  if (!navigator.geolocation) return alert('Location is not available on this device');
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        await api.put('/donors/me/location', {
+          coordinates: [pos.coords.longitude, pos.coords.latitude], // [lng, lat]
+        });
+        setLocationUpdated(true);
+        setTimeout(() => setLocationUpdated(false), 3000);
+      } catch (err) {
+        alert(err.response?.data?.message || 'Could not update your location');
+      }
+    },
+    () => alert('Allow location access to update your location')
+  );
   };
 
   return (
@@ -64,6 +83,7 @@ export const DonorDashboardPage = () => {
           {/* Left Column: Emergency Alert Card & Your Donations */}
           <div className="lg:col-span-7 space-y-6">
             {/* Active Emergency Alert Card (Page 8 exact replica) */}
+            {activeAlert ? (
             <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-5 relative">
               {/* Emergency Near You Header */}
               <div className="flex items-center justify-between">
@@ -75,6 +95,7 @@ export const DonorDashboardPage = () => {
               </div>
 
               {/* Blood Badge & Hospital Info */}
+              
               <div className="flex items-start gap-4">
                 <BloodBadge type={activeAlert.bloodType} size="lg" />
                 <div>
@@ -154,7 +175,11 @@ export const DonorDashboardPage = () => {
                 </div>
               )}
             </div>
-
+             ) : (
+                <div className="bg-white rounded-2xl p-7 border border-stone-200/80 shadow-xs text-sm text-stone-600">
+                  No active emergencies near you. We'll alert you when someone needs your blood type.
+                </div>
+              )}
             {/* Your Donations Card (Page 8) */}
             <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-5">
               <div className="flex items-center justify-between">
@@ -223,7 +248,10 @@ export const DonorDashboardPage = () => {
                 <input
                   type="checkbox"
                   checked={availableForAlerts}
-                  onChange={(e) => setAvailableForAlerts(e.target.checked)}
+                  onChange={(e) => {
+                    setAvailableForAlerts(e.target.checked);
+                    saveDonorSettings({ available: e.target.checked });
+                  }}                  
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:width-5 after:transition-all peer-checked:bg-emerald-600" />
@@ -266,6 +294,7 @@ export const DonorDashboardPage = () => {
                   value={radiusKm}
                   onChange={(e) => setRadiusKm(Number(e.target.value))}
                   className="w-full accent-[#B81D24] cursor-pointer"
+                  onPointerUp={() => saveDonorSettings({ radiusKm })}
                 />
                 <div className="flex justify-between text-[10px] text-stone-400">
                   <span>5 km</span>
@@ -339,7 +368,7 @@ export const DonorDashboardPage = () => {
                 {locationUpdated && (
                   <div className="mb-2 text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Location updated: Brooklyn, NY</span>
+                    <span>Location updated</span>
                   </div>
                 )}
                 <button
