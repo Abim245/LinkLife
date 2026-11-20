@@ -73,16 +73,6 @@ export const RegisterPage = () => {
   setLoading(true);
   try {
     const phone = normalizePhone(donorForm.phone);
-    if (currentUser.role === 'admin') {
-  const { data: ov } = await api.get('/admin/overview');
-  const apps = ov.applications.map((a) => ({
-    ...a,
-    submittedAt: new Date(a.submittedAt).toLocaleString(),
-  }));
-  setApplications(apps);
-  setSelectedAppId((apps.find((a) => a.status === 'PENDING') || apps[0])?.id || null);
-  setAdminStats(ov.stats);
-  }
     // Location is optional for donors: they can set it later from the dashboard
     let location;
     if (donorForm.consentLocation) {
