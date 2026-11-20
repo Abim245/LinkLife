@@ -20,6 +20,9 @@ export const registerSchema = z.discriminatedUnion('role', [
     lastDonationAt: z.coerce.date().optional(),
     location: point.optional(),
     radiusKm: z.number().min(1).max(100).optional(),
+    registrationNumber: z.string().optional(), 
+    jobTitle: z.string().optional(), 
+    email: z.string().email().optional(),
   }),
   z.object({
     role: z.enum(['hospital', 'bloodbank']),
@@ -105,15 +108,23 @@ export const verifyOtp = asyncHandler(async (req, res) => {
 
   res.json({ message: 'Phone verified', token: generateToken(user) });
 });
-
+export const resendOtp = asyncHandler(async (req, res) => {
+  const user = await User.findOne({ phone: req.body.phone });
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  createOtp(user.phone);
+  res.json({ message: 'OTP sent' });
+});
 export const login = asyncHandler(async (req, res) => {
   const { phone, password } = req.body;
   const user = await User.findOne({ phone });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
-  res.json({
-    token: generateToken(user),
-    user: { id: user._id, role: user.role, name: user.name, orgId: user.orgId, phoneVerified: user.phoneVerified },
-  });
+ let orgName;
+if (user.orgId) orgName = (await Organization.findById(user.orgId).select('name'))?.name;
+
+res.json({
+  token: generateToken(user),
+  user: { id: user._id, role: user.role, name: user.name, orgId: user.orgId, orgName, phoneVerified: user.phoneVerified },
+});
 });

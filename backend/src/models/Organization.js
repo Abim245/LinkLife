@@ -14,6 +14,9 @@ const orgSchema = new Schema(
     verified: { type: Boolean, default: false },
     inventory: { type: Map, of: Number, default: {} }, // { 'O-': 12, ... }
     lowThreshold: { type: Number, default: 5 },
+    registrationNumber: { type: String },
+    jobTitle: { type: String },
+    email: { type: String },
   },
   { timestamps: true }
 );

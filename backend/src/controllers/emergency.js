@@ -157,6 +157,6 @@ export const listEmergencies = asyncHandler(async (req, res) => {
   } else if (req.user.role !== 'admin') {
     filter.orgId = req.user.orgId;
   }
+  res.json(await EmergencyRequest.find(filter).populate('orgId', 'name').sort({ createdAt: -1 }).limit(50));
 
-  res.json(await EmergencyRequest.find(filter).sort({ createdAt: -1 }).limit(50));
 });
