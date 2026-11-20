@@ -4,7 +4,7 @@ import { ArrowLeft, AlertTriangle, Download, Check, Plus, Minus } from 'lucide-r
 import StatusPill from '../../components/common/StatusPill';
 import { useBloodData } from '../../context/BloodDataContext';
 import { BLOOD_TYPES } from '../../utils/compatibility';
-import { api } from '../lib/api';
+import { api } from '../../lib/api';
 export const HospitalInventoryPage = () => {
   const navigate = useNavigate();
   const { inventory, adjustStock, stockMovements, recordMovement } = useBloodData();
