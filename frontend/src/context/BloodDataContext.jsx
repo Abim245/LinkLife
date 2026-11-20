@@ -240,7 +240,7 @@ export const BloodDataProvider = ({ children }) => {
   // Active donor emergency response state
   const [donorAlertResponse, setDonorAlertResponse] = useState(null);
   const [selectedEta, setSelectedEta] = useState('20 min');
-const refreshEmergency = async (id) => {
+  const refreshEmergency = async (id) => {
   try {
     const { data } = await api.get(`/emergencies/${id}/alerts`);
     const responders = data.map((a, i) => ({
