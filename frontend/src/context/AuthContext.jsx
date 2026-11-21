@@ -115,35 +115,49 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = (data) => {
     setCurrentUser((prev) => ({ ...prev, ...data }));
   };
-  const loginWithApi = async (phone, password) => {
-    const { data } = await api.post('/auth/login', { phone, password });
-    localStorage.setItem('token', data.token); // api.js reads this key
+const loginWithApi = async (phone, password) => {
+  const { data } = await api.post('/auth/login', { phone, password });
+  localStorage.setItem('token', data.token);
 
-    const base = DEFAULT_PROFILES[data.user.role] || {};
-    let user = {
-      ...base,
-      id: data.user.id,
-      role: data.user.role,
-      name: data.user.name,
-      phone,
-      orgId: data.user.orgId,
-      orgName: data.user.orgName || base.orgName,
-      phoneVerified: data.user.phoneVerified,
+  const u = data.user;
+  const base = DEFAULT_PROFILES[u.role] || {};
+
+  // Keep only the non-identity defaults from the demo profile
+  const defaults = {};
+  [
+    'quietHours', 'allowCriticalInQuietHours', 'smsAlerts', 'pushAlerts',
+    'shareLocation', 'emergencyDefaults', 'notifications',
+  ].forEach((k) => {
+    if (base[k] !== undefined) defaults[k] = base[k];
+  });
+
+  let user = {
+    ...defaults,
+    id: u.id,
+    role: u.role,
+    name: u.name,
+    firstName: u.name.split(' ')[0],
+    coordinatorName: u.name,
+    staffName: u.name,
+    phone,
+    orgId: u.orgId,
+    orgName: u.orgName,
+    phoneVerified: u.phoneVerified,
+  };
+
+  if (u.role === 'donor') {
+    const { data: me } = await api.get('/donors/me');
+    user = {
+      ...user,
+      bloodType: me.donor?.bloodType,
+      availableForAlerts: me.donor?.available ?? true,
+      alertRadius: me.donor?.radiusKm ?? 15,
+      lastDonationDate: me.donor?.lastDonationAt,
     };
+  }
 
-    if (data.user.role === 'donor') {
-      const { data: me } = await api.get('/donors/me');
-      user = {
-        ...user,
-        bloodType: me.donor?.bloodType,
-        availableForAlerts: me.donor?.available,
-        alertRadius: me.donor?.radiusKm,
-        lastDonationDate: me.donor?.lastDonationAt,
-      };
-    }
-
-    setCurrentUser(user);
-    return user;
+  setCurrentUser(user);
+  return user;
   };
 
   const registerWithApi = async (payload) => (await api.post('/auth/register', payload)).data;

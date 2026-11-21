@@ -136,7 +136,7 @@ export const HospitalEmergenciesListPage = () => {
 
           {/* Pagination */}
           <div className="p-4 border-t border-stone-200 bg-[#FAF9F8] flex items-center justify-between text-xs text-stone-600">
-            <span>Showing [1–{filteredEmergencies.length}] of [{filteredEmergencies.length}]</span>
+            <span>Showing {filteredEmergencies.length} of {emergencies.length}</span>
             <div className="flex items-center gap-2">
               <button
                 disabled
