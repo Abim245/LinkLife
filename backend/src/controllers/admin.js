@@ -1,4 +1,20 @@
+import Organization from '../models/Organization.js';
 import User from '../models/User.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+
+export const listPendingOrgs = asyncHandler(async (req, res) => {
+  res.json(await Organization.find({ verified: false }));
+});
+
+export const verifyOrg = asyncHandler(async (req, res) => {
+  const org = await Organization.findByIdAndUpdate(
+    req.params.id,
+    { verified: true },
+    { returnDocument: 'after' }
+  );
+  if (!org) return res.status(404).json({ message: 'Organization not found' });
+  res.json(org);
+});
 
 export const overview = asyncHandler(async (req, res) => {
   const orgs = await Organization.find().sort({ createdAt: 1 });
