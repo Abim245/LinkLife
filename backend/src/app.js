@@ -25,7 +25,7 @@ app.use('/api/donors', donorRoutes);
 app.use('/api/emergencies', emergencyRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/admin', adminRoutes);
-
+app.use(morgan('dev', { skip: (req, res) => res.statusCode === 304 }));
 app.use(errorHandler);
 
 export default app;

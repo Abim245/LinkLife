@@ -49,6 +49,12 @@ export async function escalateRequest(io, requestId, { force = false } = {}) {
 export function startEscalationScheduler(io) {
   setInterval(async () => {
     try {
+      // Expire requests that have been open for more than 24 hours
+      await EmergencyRequest.updateMany(
+        { status: 'open', createdAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+        { $set: { status: 'expired', closedAt: new Date() } }
+      );
+
       const due = await EmergencyRequest.find({
         status: 'open',
         nextEscalationAt: { $lte: new Date() },
