@@ -5,6 +5,7 @@ import Organization from '../models/Organization.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { findMatchingDonors } from '../services/matching.js';
 import { distanceKm } from '../services/matching.js';
+import { nextEscalationDate, escalateRequest } from '../services/escalation.js';
 const BLOOD = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export const createSchema = z.object({
@@ -203,7 +204,19 @@ export const listAlerts = asyncHandler(async (req, res) => {
     })
   );
 });
+export const escalateNow = asyncHandler(async (req, res) => {
+  const request = await EmergencyRequest.findById(req.params.id);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
+  if (String(request.orgId) !== String(req.user.orgId)) {
+    return res.status(403).json({ message: 'Not your request' });
+  }
 
+  const result = await escalateRequest(req.app.get('io'), request._id, { force: true });
+  if (!result) {
+    return res.status(409).json({ message: 'Cannot escalate: request is closed or already at max radius' });
+  }
+  res.json(result);
+});
 export const listOpenRequests = asyncHandler(async (req, res) => {
   const mine = await Organization.findById(req.user.orgId).select('location');
   const requests = await EmergencyRequest.find({ status: 'open', orgId: { $ne: req.user.orgId } })
