@@ -23,20 +23,23 @@ export const respondSchema = z.object({
 // Live summary sent to the hospital dashboard
 async function buildSummary(request) {
   const deliveries = await AlertDelivery.find({ requestId: request._id }).populate('donorId', 'name phone');
-  res.json(
-  deliveries.map((d) => {
-    const accepted = d.response === 'accepted';
-    return {
-      donor: accepted ? d.donorId.name : 'Donor',
-      phone: accepted ? d.donorId.phone : undefined,
-      bloodType: d.donorId.donor?.bloodType,
-      channel: d.channel,
-      status: d.status,
-      response: d.response,
+  const live = deliveries.filter((d) => d.donorId); // skip donors that no longer exist
+  const accepted = live.filter((d) => d.response === 'accepted');
+  return {
+    requestId: request._id,
+    status: request.status,
+    unitsNeeded: request.unitsNeeded,
+    alerted: live.length,
+    acceptedCount: accepted.length,
+    declinedCount: live.filter((d) => d.response === 'declined').length,
+    escalationRound: request.escalationRound,
+    radiusKm: request.currentRadiusKm,
+    donors: accepted.map((d) => ({
+      name: d.donorId.name,
+      phone: d.donorId.phone,
       etaMinutes: d.etaMinutes,
-    };
-  })
-  );
+    })),
+  };
 }
 
 export const createEmergency = asyncHandler(async (req, res) => {
