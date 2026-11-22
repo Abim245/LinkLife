@@ -249,9 +249,10 @@ export const BloodDataProvider = ({ children }) => {
     const { data } = await api.get(`/emergencies/${id}/alerts`);
     const responders = data.map((a, i) => ({
       id: `${id}-${i}`,
-      name: a.donor,
-      bloodType: a.bloodType,
-      status: a.response === 'accepted' ? 'ON THE WAY' : a.response === 'declined' ? 'DECLINED' : 'AWAITING REPLY',
+      name: (typeof a.donor === 'string' ? a.donor : a.donor?.name) || a.name || a.donorName || 'Donor',
+      bloodType: a.bloodType || a.donor?.bloodType || '—',
+      status:
+        a.response === 'accepted' ? 'ON THE WAY' : a.response === 'declined' ? 'DECLINED' : 'AWAITING REPLY',
       eta: a.etaMinutes ? `${a.etaMinutes} min` : '—',
     }));
     setEmergencies((prev) =>
@@ -322,6 +323,16 @@ export const BloodDataProvider = ({ children }) => {
 
   return () => disconnectSocket();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+    useEffect(() => {
+    if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
+    const timer = setInterval(() => {
+      emergenciesRef.current
+        .filter((e) => e.status === 'LIVE')
+        .forEach((e) => refreshEmergency(e.id));
+    }, 8000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
   const widenRadius = async (id) => {
   try {
