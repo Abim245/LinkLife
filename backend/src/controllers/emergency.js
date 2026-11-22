@@ -4,7 +4,7 @@ import AlertDelivery from '../models/AlertDelivery.js';
 import Organization from '../models/Organization.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { findMatchingDonors } from '../services/matching.js';
-
+import { distanceKm } from '../services/matching.js';
 const BLOOD = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export const createSchema = z.object({
@@ -201,5 +201,27 @@ export const listAlerts = asyncHandler(async (req, res) => {
         etaMinutes: d.etaMinutes ?? null,
       };
     })
+  );
+});
+
+export const listOpenRequests = asyncHandler(async (req, res) => {
+  const mine = await Organization.findById(req.user.orgId).select('location');
+  const requests = await EmergencyRequest.find({ status: 'open', orgId: { $ne: req.user.orgId } })
+    .populate('orgId', 'name')
+    .sort({ createdAt: -1 })
+    .limit(20);
+
+  res.json(
+    requests.map((r) => ({
+      id: r._id,
+      hospital: r.orgId?.name || 'Hospital',
+      bloodType: r.bloodType,
+      units: r.unitsNeeded,
+      urgency: r.urgency,
+      distanceKm:
+        mine?.location?.coordinates?.length === 2 && r.location?.coordinates?.length === 2
+          ? Math.round(distanceKm(mine.location.coordinates, r.location.coordinates) * 10) / 10
+          : null,
+    }))
   );
 });
