@@ -139,13 +139,13 @@ export const HospitalDashboardPage = () => {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-[#FAF9F8] text-stone-600 font-semibold border-b border-stone-200">
                     <tr>
-                    <td className="py-3 px-3 font-medium">{r.name}</td>
-                    <td className="py-3 px-3 font-bold text-[#B81D24]">{r.bloodType}</td>
-                    <td className="py-3 px-3"><StatusPill status={r.status} size="xs" /></td>
-                    <td className="py-3 px-3 font-semibold text-stone-700">{r.eta}</td> 
+                    <td className="py-3 px-3 font-medium">Donor</td>
+                    <td className="py-3 px-3 font-bold text-[#B81D24]">bloodType</td>
+                    <td className="py-3 px-3">Status</td>
+                    <td className="py-3 px-3 font-semibold text-stone-700">Eta</td> 
                     </tr>
                     </thead>
-                    <tbody className="divide-y divide-stone-100 text-stone-800">
+                   <tbody className="divide-y divide-stone-100 text-stone-800">
                       {activeEmergency.responders.length === 0 && (
                         <tr>
                           <td colSpan={4} className="py-4 px-3 text-center text-stone-500">
