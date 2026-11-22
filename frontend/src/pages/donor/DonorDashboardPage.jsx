@@ -139,22 +139,22 @@ export const DonorDashboardPage = () => {
               />
 
               {/* Action Response */}
-              {donorAlertResponse ? (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>
-                      {donorAlertResponse.status === 'ACCEPTED'
-                        ? `You confirmed! ETA: ${donorAlertResponse.eta}. Hospital is expecting you.`
-                        : 'Alert declined. Thank you for notifying us.'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-700">
-                    Directions and check-in instructions have been sent via SMS.
-                  </p>
-                </div>
+             {activeAlert.myResponse !== 'none' ? (
+  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+    <div className="flex items-center gap-2 font-bold text-xs text-emerald-800">
+      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+      <span>
+        {activeAlert.myResponse === 'accepted'
+          ? `You confirmed! ETA: ${activeAlert.myEta || 'on the way'}. The hospital is expecting you.`
+          : 'Alert declined. Thank you for letting us know.'}
+      </span>
+    </div>
+    {activeAlert.myResponse === 'accepted' && (
+      <p className="text-xs text-emerald-700">Head to the hospital's emergency entrance.</p>
+    )}
+  </div>
               ) : (
-                <div className="space-y-2 pt-1">
+                  <div className="space-y-2 pt-1">
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={() => navigate(`/alert/${activeAlert.id}`)}

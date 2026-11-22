@@ -29,6 +29,9 @@ export const DonorAlertResponsePage = () => {
     };
 
   if (!emergency) {
+    const showConfirmed = confirmed || emergency.myResponse === 'accepted';
+    const showDeclined = declined || emergency.myResponse === 'declined';
+    const etaShown = emergency.myEta || selectedEta;
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAF9F8] p-6 text-center">
         <div className="space-y-3">
@@ -109,7 +112,7 @@ export const DonorAlertResponsePage = () => {
             <div className="bg-[#B81D24] text-white rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
               {/* Badge */}
               <div className="inline-block px-3 py-1 rounded-full bg-white/20 text-white text-xs font-extrabold tracking-wider uppercase">
-                CRITICAL EMERGENCY
+                {emergency.urgency.toUpperCase()} EMERGENCY.
               </div>
 
               {/* Blood Badge & Hospital Info */}
@@ -122,7 +125,7 @@ export const DonorAlertResponsePage = () => {
                     {emergency.hospitalName} needs {emergency.unitsNeeded} units
                   </h1>
                   <p className="text-xs sm:text-sm text-red-100 mt-1">
-                    {emergency.distanceKm} km from you · Needed by 3:45 PM
+                    {emergency.distanceKm != null ? `${emergency.distanceKm} km from you` : 'Near you'} · Needed by {emergency.neededBy}
                   </p>
                 </div>
               </div>

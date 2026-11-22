@@ -24,6 +24,8 @@ const mapEmergency = (r, fallbackHospital = '') => ({
   donorsAlerted: 0,
   responders: [],
   activityLog: [],
+  myResponse: r.myResponse || 'none',
+  myEta: r.myEtaMinutes ? `${r.myEtaMinutes} min` : null,
 });
 
 // Shape of the live 'emergency:new' socket event
@@ -349,19 +351,29 @@ export const BloodDataProvider = ({ children }) => {
     }
   };
 
- const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
+const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
   try {
     await api.post(`/emergencies/${id}/respond`, {
       response: response === 'ACCEPTED' ? 'accepted' : 'declined',
       ...(response === 'ACCEPTED' && { etaMinutes: parseInt(etaMinutes, 10) || 20 }),
     });
-    setDonorAlertResponse({ status: response, eta: etaMinutes });
+    setEmergencies((prev) =>
+      prev.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              myResponse: response === 'ACCEPTED' ? 'accepted' : 'declined',
+              myEta: response === 'ACCEPTED' ? etaMinutes : null,
+            }
+          : e
+      )
+    );
     return true;
   } catch (err) {
     alert(err.response?.data?.message || 'Could not send your response');
     return false;
   }
-};
+  };
 
   // Adjust stock units
   const adjustStock = (bloodType, delta) => {
