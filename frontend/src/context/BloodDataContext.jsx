@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect , useRef} from 'react';
 import { api } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { connectSocket, disconnectSocket } from '../lib/socket';
@@ -242,6 +242,8 @@ export const BloodDataProvider = ({ children }) => {
   // Active donor emergency response state
   const [donorAlertResponse, setDonorAlertResponse] = useState(null);
   const [selectedEta, setSelectedEta] = useState('20 min');
+  const emergenciesRef = useRef(emergencies);
+  emergenciesRef.current = emergencies;
   const refreshEmergency = async (id) => {
   try {
     const { data } = await api.get(`/emergencies/${id}/alerts`);
@@ -263,7 +265,7 @@ export const BloodDataProvider = ({ children }) => {
     /* donors aren't allowed to read the alert list */
   }
   };
-
+  
   useEffect(() => {
   const token = localStorage.getItem('token');
   if (!token || !currentUser?.id) return; // mock users keep the mock data
@@ -297,14 +299,20 @@ export const BloodDataProvider = ({ children }) => {
     setEmergencies((prev) => (prev.some((e) => e.id === a.requestId) ? prev : [mapAlert(a), ...prev]))
   );
   socket.on('emergency:update', (u) => {
-    setEmergencies((prev) =>
-      prev.map((e) =>
-        e.id === u.requestId
-          ? { ...e, status: STATUS_LABEL[u.status] || e.status, currentRadiusKm: u.radiusKm ?? e.currentRadiusKm }
-          : e
-      )
-    );
-    refreshEmergency(u.requestId);
+  setEmergencies((prev) =>
+    prev.map((e) =>
+      e.id === u.requestId
+        ? {
+            ...e,
+            status: STATUS_LABEL[u.status] || e.status,
+            currentRadiusKm: u.radiusKm ?? e.currentRadiusKm,
+            unitsConfirmed: u.acceptedCount ?? e.unitsConfirmed,
+            donorsAlerted: u.alerted ?? e.donorsAlerted,
+          }
+        : e
+    )
+  );
+  refreshEmergency(u.requestId); // loads the donor names and ETAs
   });
   socket.on('emergency:closed', (c) =>
     setEmergencies((prev) =>
