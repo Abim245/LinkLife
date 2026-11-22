@@ -13,8 +13,31 @@ export async function sendSMS(to, body) {
   return client.messages.create({ from: env.twilio.phone, to, body });
 }
 
+// Texts every offline donor, then marks each delivery sent or failed
+async function sendSmsAlerts(smsDeliveries, byDonorId, request, hospitalName) {
+  const link = `${env.appUrl}/alert/${request._id}`;
+
+  await Promise.allSettled(
+    smsDeliveries.map(async (d) => {
+      const m = byDonorId.get(String(d.donorId));
+      const body =
+        `LifeLink ${String(request.urgency).toUpperCase()}: ${hospitalName} needs ` +
+        `${request.unitsNeeded} unit(s) of ${request.bloodType} blood, ` +
+        `${m.distanceKm} km from you. Respond: ${link}`;
+      try {
+        await sendSMS(m.donor.phone, body);
+        await AlertDelivery.updateOne({ _id: d._id }, { status: 'sent', sentAt: new Date() });
+      } catch (err) {
+        await AlertDelivery.updateOne({ _id: d._id }, { status: 'failed' });
+        console.error(`SMS to ${m.donor.phone} failed (${err.code || 'no code'}): ${err.message}`);
+      }
+    })
+  );
+}
+
 export async function alertDonors(io, request, hospitalName) {
   const matches = await findMatchingDonors(request);
+  const byDonorId = new Map(matches.map((m) => [String(m.donor._id), m]));
 
   const deliveries = matches.map(({ donor }) => {
     const online = io.sockets.adapter.rooms.has(`donor:${donor._id}`);
@@ -27,9 +50,9 @@ export async function alertDonors(io, request, hospitalName) {
     };
   });
 
-  if (deliveries.length) {
-    await AlertDelivery.insertMany(deliveries, { ordered: false });
-  }
+  const inserted = deliveries.length
+    ? await AlertDelivery.insertMany(deliveries, { ordered: false })
+    : [];
 
   for (const { donor, distanceKm } of matches) {
     io.to(`donor:${donor._id}`).emit('emergency:new', {
@@ -42,9 +65,17 @@ export async function alertDonors(io, request, hospitalName) {
     });
   }
 
+  // Send the texts in the background so declaring an emergency stays fast
+  const smsDeliveries = inserted.filter((d) => d.channel === 'sms');
+  if (smsDeliveries.length) {
+    sendSmsAlerts(smsDeliveries, byDonorId, request, hospitalName).catch((err) =>
+      console.error('SMS batch error:', err.message)
+    );
+  }
+
   return {
     alerted: matches.length,
     viaSocket: deliveries.filter((d) => d.channel === 'socket').length,
-    smsQueued: deliveries.filter((d) => d.channel === 'sms').length,
+    smsQueued: smsDeliveries.length,
   };
 }
