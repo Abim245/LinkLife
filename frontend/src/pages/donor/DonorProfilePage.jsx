@@ -1,26 +1,45 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BLOOD_TYPES } from '../../utils/compatibility';
 import InteractiveMapMock from '../../components/common/InteractiveMapMock';
+import { api } from '../../lib/api';
+
+// "10:00 PM" -> "22:00" (the backend stores 24-hour HH:MM)
+const to24 = (t) => {
+  const [time, ap] = t.split(' ');
+  let [h, m] = time.split(':').map(Number);
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+const apiError = (err) => {
+  const d = err.response?.data;
+  if (d?.errors?.length) return d.errors.map((x) => `${x.field}: ${x.message}`).join(', ');
+  return d?.message || err.message || 'Something went wrong';
+};
 
 export const DonorProfilePage = () => {
   const { currentUser, updateProfile } = useAuth();
+  const isReal = Boolean(currentUser?.id); // demo logins have no account on the server
   const [activeTab, setActiveTab] = useState('profile');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  // Profile Form States
-  const [fullName, setFullName] = useState(currentUser?.name || 'Lucas Miller');
-  const [phone, setPhone] = useState(currentUser?.phone || '+1 (555) 234-5678');
-  const [email, setEmail] = useState(currentUser?.email || 'lucas.miller@example.com');
-  const [bloodType, setBloodType] = useState(currentUser?.bloodType || 'O-');
+  // Profile (name, phone, blood type are shown but not editable: the server doesn't store changes to them yet)
+  const fullName = currentUser?.name || '';
+  const phone = currentUser?.phone || '';
+  const email = currentUser?.email || '';
+  const bloodType = currentUser?.bloodType || '';
+  const dob = currentUser?.dob || '';
   const [lastDonationDate, setLastDonationDate] = useState(
-    currentUser?.lastDonationDate || '2026-08-15'
+    currentUser?.lastDonationDate ? String(currentUser.lastDonationDate).slice(0, 10) : ''
   );
-  const [dob, setDob] = useState(currentUser?.dob || '1996-05-14');
 
-  // Alerts Form States
+  // Alerts
   const [availableForAlerts, setAvailableForAlerts] = useState(
     currentUser?.availableForAlerts ?? true
   );
@@ -33,45 +52,96 @@ export const DonorProfilePage = () => {
   const [smsAlerts, setSmsAlerts] = useState(currentUser?.smsAlerts ?? true);
   const [pushAlerts, setPushAlerts] = useState(currentUser?.pushAlerts ?? true);
 
-  // Location Form States
+  // Location
   const [shareLocation, setShareLocation] = useState(currentUser?.shareLocation ?? true);
-  const [locationUpdatedText, setLocationUpdatedText] = useState('2 hours ago');
+  const [locationUpdatedText, setLocationUpdatedText] = useState('Not set yet');
 
-  // Security Form States
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  // Load the saved values from the server
+  useEffect(() => {
+    if (!isReal) return;
+    api
+      .get('/donors/me')
+      .then(({ data }) => {
+        const d = data.donor || {};
+        if (d.lastDonationAt) setLastDonationDate(String(d.lastDonationAt).slice(0, 10));
+        if (d.available !== undefined) setAvailableForAlerts(d.available);
+        if (d.radiusKm) setAlertRadius(d.radiusKm);
+        if (d.locationUpdatedAt) {
+          setLocationUpdatedText(new Date(d.locationUpdatedAt).toLocaleString());
+        }
+      })
+      .catch(() => {});
+  }, [isReal]);
 
-  const handleSave = (e) => {
-    e?.preventDefault();
-    updateProfile({
-      name: fullName,
-      phone,
-      email,
-      bloodType,
-      lastDonationDate,
-      dob,
-      availableForAlerts,
-      alertRadius,
-      quietHours: { from: quietFrom, to: quietTo },
-      allowCriticalInQuietHours: allowCriticalInQuiet,
-      smsAlerts,
-      pushAlerts,
-      shareLocation,
-    });
+  const flashSaved = () => {
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleSave = async (e) => {
+    e?.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      if (isReal) {
+        await api.patch('/donors/me', {
+          available: availableForAlerts,
+          radiusKm: alertRadius,
+          quietHours: { start: to24(quietFrom), end: to24(quietTo) },
+          ...(lastDonationDate && { lastDonationAt: lastDonationDate }),
+        });
+      }
+      updateProfile({
+        lastDonationDate,
+        availableForAlerts,
+        alertRadius,
+        quietHours: { from: quietFrom, to: quietTo },
+        allowCriticalInQuietHours: allowCriticalInQuiet,
+        smsAlerts,
+        pushAlerts,
+        shareLocation,
+      });
+      flashSaved();
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleUpdateLocation = () => {
-    setLocationUpdatedText('Just now');
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    setError('');
+    if (!isReal) return setError('Log in with a real account to update your location.');
+    if (!navigator.geolocation) return setError('Location is not available on this device.');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await api.put('/donors/me/location', {
+            coordinates: [pos.coords.longitude, pos.coords.latitude], // [lng, lat]
+          });
+          setLocationUpdatedText('Just now');
+          flashSaved();
+        } catch (err) {
+          setError(apiError(err));
+        }
+      },
+      () => setError('Allow location access in your browser to update your location.'),
+      { timeout: 10000 }
+    );
   };
+
+  const initials =
+    fullName
+      .split(' ')
+      .filter(Boolean)
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '?';
 
   return (
     <div className="min-h-screen bg-[#FAF9F8]">
-      {/* Top Bar with Back Link (UI/UX Page 17) */}
+      {/* Top Bar with Back Link */}
       <header className="bg-white border-b border-stone-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link
@@ -91,7 +161,7 @@ export const DonorProfilePage = () => {
           </h1>
         </div>
 
-        {/* Filter Navigation Tabs (UI/UX Page 17) */}
+        {/* Tabs */}
         <div className="flex flex-wrap gap-2 border-b border-stone-200 pb-3 text-xs font-semibold">
           {[
             { id: 'profile', label: 'Profile' },
@@ -117,12 +187,18 @@ export const DonorProfilePage = () => {
         {saveSuccess && (
           <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
             <Check className="w-4 h-4 text-emerald-600" />
-            <span>Changes saved successfully!</span>
+            <span>Changes saved.</span>
           </div>
         )}
 
-        {/* SECTION 1: Profile (Page 17) */}
-        {(activeTab === 'profile' || activeTab === 'all') && (
+        {error && (
+          <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl">
+            {error}
+          </div>
+        )}
+
+        {/* SECTION 1: Profile */}
+        {activeTab === 'profile' && (
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-xs space-y-6">
             <div>
               <h2 className="text-lg font-bold text-stone-900">Profile</h2>
@@ -131,23 +207,10 @@ export const DonorProfilePage = () => {
               </p>
             </div>
 
-            {/* Avatar */}
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl bg-[#B81D24] text-white flex items-center justify-center font-bold text-xl shadow-xs">
-                {fullName
-                  .split(' ')
-                  .map((n) => n[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase() || 'LM'}
+                {initials}
               </div>
-              <button
-                type="button"
-                onClick={() => alert('Photo upload dialog')}
-                className="px-4 py-2 rounded-lg border border-stone-300 hover:bg-stone-50 text-stone-700 text-xs font-semibold shadow-xs transition-colors"
-              >
-                Change photo
-              </button>
             </div>
 
             <form onSubmit={handleSave} className="space-y-4 text-xs">
@@ -156,8 +219,8 @@ export const DonorProfilePage = () => {
                 <input
                   type="text"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
+                  disabled
+                  className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50 text-stone-600"
                 />
               </div>
 
@@ -165,24 +228,17 @@ export const DonorProfilePage = () => {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="font-semibold text-stone-700">Mobile number</label>
-                    <div className="flex items-center gap-2">
+                    {currentUser?.phoneVerified && (
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                         VERIFIED
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => alert('Change number modal')}
-                        className="text-[11px] font-semibold text-[#B81D24] hover:underline"
-                      >
-                        Change number
-                      </button>
-                    </div>
+                    )}
                   </div>
                   <input
                     type="tel"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
+                    disabled
+                    className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50 text-stone-600"
                   />
                 </div>
 
@@ -193,8 +249,9 @@ export const DonorProfilePage = () => {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
+                    placeholder="Not set"
+                    disabled
+                    className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50 text-stone-600"
                   />
                 </div>
               </div>
@@ -204,9 +261,10 @@ export const DonorProfilePage = () => {
                   <label className="block font-semibold text-stone-700 mb-1.5">Blood type</label>
                   <select
                     value={bloodType}
-                    onChange={(e) => setBloodType(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white font-bold"
+                    disabled
+                    className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50 text-stone-600 font-bold"
                   >
+                    {!bloodType && <option value="">—</option>}
                     {BLOOD_TYPES.map((t) => (
                       <option key={t} value={t}>
                         {t}
@@ -228,32 +286,38 @@ export const DonorProfilePage = () => {
                     onChange={(e) => setLastDonationDate(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
                   />
+                  <span className="text-[11px] text-stone-500 mt-1 block">
+                    You won't be alerted for 56 days after a donation.
+                  </span>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1.5">Date of birth</label>
-                <input
-                  type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
-                />
-              </div>
+              {dob && (
+                <div>
+                  <label className="block font-semibold text-stone-700 mb-1.5">Date of birth</label>
+                  <input
+                    type="date"
+                    value={dob}
+                    disabled
+                    className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50 text-stone-600"
+                  />
+                </div>
+              )}
 
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-xs shadow-xs transition-colors"
+                  disabled={saving}
+                  className="px-6 py-2.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-xs shadow-xs transition-colors disabled:opacity-60"
                 >
-                  Save changes
+                  {saving ? 'Saving...' : 'Save changes'}
                 </button>
               </div>
             </form>
           </div>
         )}
 
-        {/* SECTION 2: Alerts (Page 17) */}
+        {/* SECTION 2: Alerts */}
         {activeTab === 'alerts' && (
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-xs space-y-6">
             <div>
@@ -264,7 +328,6 @@ export const DonorProfilePage = () => {
             </div>
 
             <div className="space-y-5 text-xs">
-              {/* Available for alerts toggle */}
               <div className="flex items-center justify-between py-2 border-b border-stone-100">
                 <div>
                   <div className="font-semibold text-stone-800">Available for alerts</div>
@@ -278,7 +341,6 @@ export const DonorProfilePage = () => {
                 />
               </div>
 
-              {/* Alert Radius */}
               <div className="space-y-2">
                 <div className="flex justify-between font-semibold text-stone-800">
                   <span>Alert radius:</span>
@@ -295,7 +357,6 @@ export const DonorProfilePage = () => {
                 />
               </div>
 
-              {/* Quiet hours */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div>
                   <label className="block font-semibold text-stone-700 mb-1.5">
@@ -327,14 +388,13 @@ export const DonorProfilePage = () => {
                 </div>
               </div>
 
-              {/* Allow critical alerts toggle */}
               <div className="flex items-center justify-between py-2 border-b border-stone-100">
                 <div>
                   <div className="font-semibold text-stone-800">
                     Allow critical alerts in quiet hours
                   </div>
                   <div className="text-stone-500 text-[11px]">
-                    Only for critical emergencies near you.
+                    Critical emergencies near you always get through.
                   </div>
                 </div>
                 <input
@@ -345,7 +405,6 @@ export const DonorProfilePage = () => {
                 />
               </div>
 
-              {/* SMS alerts */}
               <div className="flex items-center justify-between py-2 border-b border-stone-100">
                 <div>
                   <div className="font-semibold text-stone-800">SMS alerts</div>
@@ -361,7 +420,6 @@ export const DonorProfilePage = () => {
                 />
               </div>
 
-              {/* In-app and push alerts */}
               <div className="flex items-center justify-between py-2">
                 <div>
                   <div className="font-semibold text-stone-800">In-app and push alerts</div>
@@ -381,16 +439,17 @@ export const DonorProfilePage = () => {
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="px-6 py-2.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-xs shadow-xs transition-colors"
+                  disabled={saving}
+                  className="px-6 py-2.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-xs shadow-xs transition-colors disabled:opacity-60"
                 >
-                  Save changes
+                  {saving ? 'Saving...' : 'Save changes'}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* SECTION 3: Location (Page 18) */}
+        {/* SECTION 3: Location */}
         {activeTab === 'location' && (
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-xs space-y-6">
             <div>
@@ -421,7 +480,7 @@ export const DonorProfilePage = () => {
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <span className="text-stone-500">Last updated [{locationUpdatedText}]</span>
+                <span className="text-stone-500">Last updated: {locationUpdatedText}</span>
                 <button
                   type="button"
                   onClick={handleUpdateLocation}
@@ -434,7 +493,7 @@ export const DonorProfilePage = () => {
           </div>
         )}
 
-        {/* SECTION 4: Security (Page 18) */}
+        {/* SECTION 4: Security */}
         {activeTab === 'security' && (
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-xs space-y-6">
             <div>
@@ -442,15 +501,18 @@ export const DonorProfilePage = () => {
               <p className="text-xs text-stone-500 mt-0.5">Keep your account safe.</p>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4 text-xs">
+            <div className="p-3.5 bg-stone-50 border border-stone-200 text-stone-600 text-xs rounded-xl">
+              Changing your password from the app isn't available yet.
+            </div>
+
+            <form onSubmit={(e) => e.preventDefault()} className="space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-stone-700 mb-1.5">Current password</label>
                 <input
                   type="password"
                   placeholder="••••••••"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
+                  disabled
+                  className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50"
                 />
               </div>
 
@@ -460,9 +522,8 @@ export const DonorProfilePage = () => {
                   <input
                     type="password"
                     placeholder="At least 8 characters"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
+                    disabled
+                    className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50"
                   />
                 </div>
                 <div>
@@ -472,33 +533,26 @@ export const DonorProfilePage = () => {
                   <input
                     type="password"
                     placeholder="Confirm new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-xs focus:outline-none focus:ring-1 focus:ring-[#B81D24] bg-white"
+                    disabled
+                    className="w-full px-4 py-2.5 rounded-lg border border-stone-200 text-xs bg-stone-50"
                   />
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-3 pt-2">
+              <div className="pt-2">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-xs shadow-xs transition-colors"
+                  disabled
+                  className="px-6 py-2.5 rounded-lg bg-stone-300 text-white font-semibold text-xs cursor-not-allowed"
                 >
                   Update password
-                </button>
-                <button
-                  type="button"
-                  onClick={() => alert('Logged out of all active devices.')}
-                  className="px-5 py-2.5 rounded-lg bg-white hover:bg-stone-50 text-stone-700 font-semibold text-xs border border-stone-300 transition-colors"
-                >
-                  Log out of all devices
                 </button>
               </div>
             </form>
           </div>
         )}
 
-        {/* SECTION 5: Privacy and account (Page 18) */}
+        {/* SECTION 5: Privacy and account */}
         {activeTab === 'privacy' && (
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-xs space-y-6">
             <div>

@@ -221,10 +221,10 @@ export const INITIAL_USERS = [
 ];
 
 export const INITIAL_STOCK_MOVEMENTS = [
-  { id: 'm1', when: '12 min ago', type: 'O-', change: -4, reason: 'Issued to hospital', by: 'Marcus Reed' },
-  { id: 'm2', when: 'Today, 09:30', type: 'O+', change: +2, reason: 'Donation received', by: 'Marcus Reed' },
+  { id: 'm1', when: '12 min ago', type: 'O-', change: -4, reason: 'Issued to hospital', by: currentUser?.name || 'You' },
+  { id: 'm2', when: 'Today, 09:30', type: 'O+', change: +2, reason: 'Donation received', by: currentUser?.name || 'You' },
   { id: 'm3', when: 'Yesterday', type: 'A-', change: -1, reason: 'Used', by: 'Sarah Vance' },
-  { id: 'm4', when: 'Nov 14', type: 'B+', change: +3, reason: 'Donation received', by: 'Marcus Reed' },
+  { id: 'm4', when: 'Nov 14', type: 'B+', change: +3, reason: 'Donation received', by: currentUser?.name || 'You' },
   { id: 'm5', when: 'Nov 12', type: 'AB-', change: -1, reason: 'Adjustment', by: 'Sarah Vance' },
 ];
 
@@ -340,9 +340,10 @@ export const BloodDataProvider = ({ children }) => {
     useEffect(() => {
     if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
     const timer = setInterval(() => {
-      emergenciesRef.current
-        .filter((e) => e.status === 'LIVE')
-        .forEach((e) => refreshEmergency(e.id));
+     emergenciesRef.current
+  .filter((e) => e.status === 'LIVE')
+  .slice(0, 3)
+  .forEach((e) => refreshEmergency(e.id));
     }, 8000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -408,25 +409,25 @@ const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
   };
 
   // Adjust stock units
-const adjustStock = (bloodType, delta) => {
-  const current = inventory.find((i) => i.type === bloodType)?.units ?? 0;
-  if (delta < 0 && current === 0) return; // nothing to remove
+  const adjustStock = (bloodType, delta) => {
+    const current = inventory.find((i) => i.type === bloodType)?.units ?? 0;
+    if (delta < 0 && current === 0) return; // nothing to remove
 
-  setInventory((prev) =>
-    prev.map((item) => {
-      if (item.type !== bloodType) return item;
-      const newUnits = Math.max(0, item.units + delta);
-      const newStatus =
-        newUnits < item.lowThreshold ? 'LOW' : newUnits <= item.lowThreshold + 2 ? 'WATCH' : 'OK';
-      return { ...item, units: newUnits, status: newStatus, lastChanged: 'Just now' };
-    })
-  );
+    setInventory((prev) =>
+      prev.map((item) => {
+        if (item.type !== bloodType) return item;
+        const newUnits = Math.max(0, item.units + delta);
+        const newStatus =
+          newUnits < item.lowThreshold ? 'LOW' : newUnits <= item.lowThreshold + 2 ? 'WATCH' : 'OK';
+        return { ...item, units: newUnits, status: newStatus, lastChanged: 'Just now' };
+      })
+    );
 
-  if (localStorage.getItem('token') && currentUser?.id) {
-    // If the server rejects it, reload the real numbers instead of leaving the screen wrong
-    api.patch('/inventory', { bloodType, change: delta }).catch(() => refreshInventory());
-  }
-};
+    if (localStorage.getItem('token') && currentUser?.id) {
+      // If the server rejects it, reload the real numbers instead of leaving the screen wrong
+      api.patch('/inventory', { bloodType, change: delta }).catch(() => refreshInventory());
+    }
+  };
 
   // Record stock movement
   const recordMovement = (type, direction, units, reason, note = '') => {
@@ -438,7 +439,7 @@ const adjustStock = (bloodType, delta) => {
       type,
       change,
       reason,
-      by: 'Marcus Reed',
+      by: currentUser?.name || 'You',
       note,
     };
     setStockMovements((prev) => [newMovement, ...prev]);
