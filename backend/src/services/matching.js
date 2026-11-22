@@ -6,7 +6,7 @@ const COOLDOWN_DAYS = Number(process.env.DONATION_COOLDOWN_DAYS || 56);
 const FIRST_WAVE_CAP = 50;
 
 // Distance in km between two [lng, lat] points
-function distanceKm([lng1, lat1], [lng2, lat2]) {
+export function distanceKm([lng1, lat1], [lng2, lat2]) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
