@@ -37,8 +37,16 @@ const mapAlert = (a) => ({
   distanceKm: a.distanceKm,
 });
 
-const statusFor = (units, low) => (units <= low ? 'LOW' : units <= low + 2 ? 'WATCH' : 'OK');
-const BloodDataContext = createContext(null);
+const statusFor = (units, low) => (units < low ? 'LOW' : units <= low + 2 ? 'WATCH' : 'OK');
+
+const mapInventory = (inv) =>
+  inv.stock.map((s) => ({
+    type: s.bloodType,
+    units: s.units,
+    lowThreshold: inv.lowThreshold,
+    status: statusFor(s.units, inv.lowThreshold),
+    lastChanged: '—',
+  }));const BloodDataContext = createContext(null);
 
 export const INITIAL_INVENTORY = [
   { type: 'O-', units: 2, lowThreshold: 6, status: 'LOW', lastChanged: '12 min ago' },
@@ -266,29 +274,32 @@ export const BloodDataProvider = ({ children }) => {
     /* donors aren't allowed to read the alert list */
   }
   };
-  
+  const refreshInventory = async () => {
+  if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
+  try {
+    const { data: inv } = await api.get('/inventory');
+    setInventory(mapInventory(inv));
+  } catch {
+    /* keep what we have */
+  }
+  };
   useEffect(() => {
   const token = localStorage.getItem('token');
   if (!token || !currentUser?.id) return; // mock users keep the mock data
+
+  const isOrg = ['hospital', 'bloodbank'].includes(currentUser.role);
 
   (async () => {
     try {
       const { data } = await api.get('/emergencies');
       const mapped = data.map((r) => mapEmergency(r, currentUser.orgName));
       setEmergencies(mapped);
-      mapped.filter((e) => e.status === 'LIVE').forEach((e) => refreshEmergency(e.id));
 
-      if (['hospital', 'bloodbank'].includes(currentUser.role)) {
+      if (isOrg) {
+        mapped.filter((e) => e.status === 'LIVE').forEach((e) => refreshEmergency(e.id));
         const { data: inv } = await api.get('/inventory');
-        setInventory(
-          inv.stock.map((s) => ({
-            type: s.bloodType,
-            units: s.units,
-            lowThreshold: inv.lowThreshold,
-            status: statusFor(s.units, inv.lowThreshold),
-            lastChanged: '—',
-          }))
-        );
+        setInventory(mapInventory(inv));
+        setStockMovements([]);
       }
     } catch (err) {
       console.error('Load failed:', err.message);
@@ -296,24 +307,26 @@ export const BloodDataProvider = ({ children }) => {
   })();
 
   const socket = connectSocket(token);
+  if (!socket) return;
+
   socket.on('emergency:new', (a) =>
     setEmergencies((prev) => (prev.some((e) => e.id === a.requestId) ? prev : [mapAlert(a), ...prev]))
   );
   socket.on('emergency:update', (u) => {
-  setEmergencies((prev) =>
-    prev.map((e) =>
-      e.id === u.requestId
-        ? {
-            ...e,
-            status: STATUS_LABEL[u.status] || e.status,
-            currentRadiusKm: u.radiusKm ?? e.currentRadiusKm,
-            unitsConfirmed: u.acceptedCount ?? e.unitsConfirmed,
-            donorsAlerted: u.alerted ?? e.donorsAlerted,
-          }
-        : e
-    )
-  );
-  refreshEmergency(u.requestId); // loads the donor names and ETAs
+    setEmergencies((prev) =>
+      prev.map((e) =>
+        e.id === u.requestId
+          ? {
+              ...e,
+              status: STATUS_LABEL[u.status] || e.status,
+              currentRadiusKm: u.radiusKm ?? e.currentRadiusKm,
+              unitsConfirmed: u.acceptedCount ?? e.unitsConfirmed,
+              donorsAlerted: u.alerted ?? e.donorsAlerted,
+            }
+          : e
+      )
+    );
+    refreshEmergency(u.requestId);
   });
   socket.on('emergency:closed', (c) =>
     setEmergencies((prev) =>
@@ -323,7 +336,7 @@ export const BloodDataProvider = ({ children }) => {
 
   return () => disconnectSocket();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id]);
+}, [currentUser?.id]);
     useEffect(() => {
     if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
     const timer = setInterval(() => {
@@ -395,31 +408,25 @@ const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
   };
 
   // Adjust stock units
-  const adjustStock = (bloodType, delta) => {
-    setInventory((prev) =>
-      prev.map((item) => {
-        if (item.type === bloodType) {
-          const newUnits = Math.max(0, item.units + delta);
-          let newStatus = 'OK';
-          if (newUnits <= item.lowThreshold) {
-            newStatus = 'LOW';
-          } else if (newUnits <= item.lowThreshold + 2) {
-            newStatus = 'WATCH';
-          }
-          return {
-            ...item,
-            units: newUnits,
-            status: newStatus,
-            lastChanged: 'Just now',
-          };
-        }
-        return item;
-      })
-    );
-    if (localStorage.getItem('token') && currentUser?.id) {
-  api.patch('/inventory', { bloodType, change: delta }).catch(() => {});
+const adjustStock = (bloodType, delta) => {
+  const current = inventory.find((i) => i.type === bloodType)?.units ?? 0;
+  if (delta < 0 && current === 0) return; // nothing to remove
+
+  setInventory((prev) =>
+    prev.map((item) => {
+      if (item.type !== bloodType) return item;
+      const newUnits = Math.max(0, item.units + delta);
+      const newStatus =
+        newUnits < item.lowThreshold ? 'LOW' : newUnits <= item.lowThreshold + 2 ? 'WATCH' : 'OK';
+      return { ...item, units: newUnits, status: newStatus, lastChanged: 'Just now' };
+    })
+  );
+
+  if (localStorage.getItem('token') && currentUser?.id) {
+    // If the server rejects it, reload the real numbers instead of leaving the screen wrong
+    api.patch('/inventory', { bloodType, change: delta }).catch(() => refreshInventory());
   }
-  };
+};
 
   // Record stock movement
   const recordMovement = (type, direction, units, reason, note = '') => {
