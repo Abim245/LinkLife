@@ -21,6 +21,7 @@ export const respondSchema = z.object({
 });
 
 // Live summary sent to the hospital dashboard
+// Live summary sent to the hospital dashboard (no `res` here, it only returns data)
 async function buildSummary(request) {
   const deliveries = await AlertDelivery.find({ requestId: request._id }).populate('donorId', 'name phone');
   const live = deliveries.filter((d) => d.donorId); // skip donors that no longer exist
@@ -41,7 +42,6 @@ async function buildSummary(request) {
     })),
   };
 }
-
 export const createEmergency = asyncHandler(async (req, res) => {
   const org = await Organization.findById(req.user.orgId);
   if (!org) return res.status(400).json({ message: 'No organization linked to this account' });
@@ -174,4 +174,32 @@ export const listEmergencies = asyncHandler(async (req, res) => {
 
   if (req.user.role !== 'admin') filter.orgId = req.user.orgId;
   res.json(await EmergencyRequest.find(filter).populate('orgId', 'name').sort({ createdAt: -1 }).limit(50));
+});
+
+export const listAlerts = asyncHandler(async (req, res) => {
+  const request = await EmergencyRequest.findById(req.params.id);
+  if (!request) return res.status(404).json({ message: 'Request not found' });
+
+  const isOwner = String(request.orgId) === String(req.user.orgId);
+  if (!isOwner && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+
+  const deliveries = await AlertDelivery.find({ requestId: request._id })
+    .populate('donorId', 'name phone donor.bloodType');
+
+  res.json(
+    deliveries
+      .filter((d) => d.donorId)
+      .map((d) => {
+        const accepted = d.response === 'accepted';
+        return {
+          donor: accepted ? d.donorId.name : 'Donor',
+          phone: accepted ? d.donorId.phone : undefined,
+          bloodType: d.donorId.donor?.bloodType,
+          channel: d.channel,
+          status: d.status,
+          response: d.response,
+          etaMinutes: d.etaMinutes,
+        };
+      })
+  );
 });
