@@ -12,4 +12,5 @@ export const env = {
     token: process.env.TWILIO_AUTH_TOKEN,
     phone: process.env.TWILIO_PHONE,
   },
+  appUrl: process.env.APP_URL || 'http://localhost:5173',
 };
