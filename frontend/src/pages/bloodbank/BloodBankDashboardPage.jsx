@@ -1,49 +1,74 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, Plus, Minus } from 'lucide-react';
 import OrgSidebar from '../../components/layout/OrgSidebar';
 import StatusPill from '../../components/common/StatusPill';
 import { useBloodData } from '../../context/BloodDataContext';
+import { useAuth } from '../../context/AuthContext';
+import { api } from '../../lib/api';
 
 export const BloodBankDashboardPage = () => {
-  const navigate = useNavigate();
-  const { inventory, adjustStock, emergencies } = useBloodData();
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const navigate = useNavigate();const { currentUser } = useAuth();
+const { inventory, adjustStock, refreshInventory } = useBloodData();
+const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Simulated hospital requests awaiting blood bank fulfillment (Page 11)
-  const [hospitalRequests, setHospitalRequests] = useState([
-    {
-      id: 'hr-1',
-      hospital: 'St. Jude Emergency Hospital',
-      bloodType: 'O-',
-      units: 4,
-      distanceKm: 3.1,
-      urgency: 'CRITICAL',
-    },
-    {
-      id: 'hr-2',
-      hospital: 'Mercy General Hospital',
-      bloodType: 'A-',
-      units: 2,
-      distanceKm: 4.8,
-      urgency: 'URGENT',
-    },
-  ]);
+const [hospitalRequests, setHospitalRequests] = useState([]);
+const [shortages, setShortages] = useState([]);
+const lowTypes = inventory.filter((i) => i.status === 'LOW').map((i) => i.type);
 
-  const handleFulfill = (id) => {
-    setHospitalRequests(hospitalRequests.filter((r) => r.id !== id));
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+// Real data, refreshed every 15 seconds. Demo logins have no account, so they stay empty.
+useEffect(() => {
+  if (!currentUser?.id) return;
+  let alive = true;
+  const load = async () => {
+    try {
+      const [reqs, short] = await Promise.all([
+        api.get('/emergencies/open'),
+        api.get('/inventory/shortages'),
+      ]);
+      if (!alive) return;
+      setHospitalRequests((prev) => {
+        const hidden = new Set(prev.filter((p) => p.hidden).map((p) => p.id));
+        return reqs.data.map((r) => ({ ...r, hidden: hidden.has(r.id) }));
+      });
+      setShortages(
+        short.data.flatMap((o) => o.low.map((l) => ({ hospital: o.organization, bloodType: l.bloodType })))
+      );
+    } catch {
+      /* keep what we have */
+    }
   };
-
-  const handleDeclineRequest = (id) => {
-    setHospitalRequests(hospitalRequests.filter((r) => r.id !== id));
+  load();
+  const timer = setInterval(load, 15000);
+  return () => {
+    alive = false;
+    clearInterval(timer);
   };
+}, [currentUser?.id]);
 
-  const handleSaveStock = () => {
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-  };
+const visibleRequests = hospitalRequests.filter((r) => !r.hidden);
+const hide = (id) =>
+  setHospitalRequests((prev) => prev.map((r) => (r.id === id ? { ...r, hidden: true } : r)));
+
+const handleFulfill = (req) => {
+  const have = inventory.find((i) => i.type === req.bloodType)?.units ?? 0;
+  if (have < req.units) {
+    alert(`Not enough ${req.bloodType} in stock (you have ${have}, they need ${req.units}).`);
+    return;
+  }
+  adjustStock(req.bloodType, -req.units); // really removes the units
+  hide(req.id);
+  setSaveSuccess(true);
+  setTimeout(() => setSaveSuccess(false), 3000);
+};
+
+const handleDeclineRequest = (id) => hide(id);
+
+const handleSaveStock = async () => {
+  await refreshInventory();
+  setSaveSuccess(true);
+  setTimeout(() => setSaveSuccess(false), 3000);
+};
 
   return (
     <OrgSidebar>
