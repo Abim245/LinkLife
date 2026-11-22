@@ -152,11 +152,23 @@ export const listEmergencies = asyncHandler(async (req, res) => {
   if (req.query.status) filter.status = req.query.status;
 
   if (req.user.role === 'donor') {
-    const ids = await AlertDelivery.find({ donorId: req.user.id }).distinct('requestId');
-    filter._id = { $in: ids };
-  } else if (req.user.role !== 'admin') {
-    filter.orgId = req.user.orgId;
-  }
-  res.json(await EmergencyRequest.find(filter).populate('orgId', 'name').sort({ createdAt: -1 }).limit(50));
+    const deliveries = await AlertDelivery.find({ donorId: req.user.id });
+    const mine = new Map(deliveries.map((d) => [String(d.requestId), d]));
+    filter._id = { $in: [...mine.keys()] };
 
+    const requests = await EmergencyRequest.find(filter)
+      .populate('orgId', 'name')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    return res.json(
+      requests.map((r) => {
+        const d = mine.get(String(r._id));
+        return { ...r.toObject(), myResponse: d?.response || 'none', myEtaMinutes: d?.etaMinutes };
+      })
+    );
+  }
+
+  if (req.user.role !== 'admin') filter.orgId = req.user.orgId;
+  res.json(await EmergencyRequest.find(filter).populate('orgId', 'name').sort({ createdAt: -1 }).limit(50));
 });
