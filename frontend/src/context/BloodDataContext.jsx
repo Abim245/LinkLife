@@ -220,13 +220,9 @@ export const INITIAL_USERS = [
   { id: 'u6', name: 'Mercy General Hospital', role: 'Hospital', status: 'VERIFIED', joined: 'Jan 20, 2026', phone: '+1 (555) 987-6543', email: 'admin@mercygen.org' },
 ];
 
-export const INITIAL_STOCK_MOVEMENTS = [
-  { id: 'm1', when: '12 min ago', type: 'O-', change: -4, reason: 'Issued to hospital', by: currentUser?.name || 'You' },
-  { id: 'm2', when: 'Today, 09:30', type: 'O+', change: +2, reason: 'Donation received', by: currentUser?.name || 'You' },
-  { id: 'm3', when: 'Yesterday', type: 'A-', change: -1, reason: 'Used', by: 'Sarah Vance' },
-  { id: 'm4', when: 'Nov 14', type: 'B+', change: +3, reason: 'Donation received', by: currentUser?.name || 'You' },
-  { id: 'm5', when: 'Nov 12', type: 'AB-', change: -1, reason: 'Adjustment', by: 'Sarah Vance' },
-];
+export const INITIAL_STOCK_MOVEMENTS = [{id: 'm1', when: '12 min ago', type: 'O-', change: -4, reason: 'Issued to hospital', by: 'Marcus Reed' },
+{ id: 'm2', when: 'Today, 09:30', type: 'O+', change: +2, reason: 'Donation received', by: 'Marcus Reed' },
+{ id: 'm4', when: 'Nov 14', type: 'B+', change: +3, reason: 'Donation received', by: 'Marcus Reed' }]
 
 export const INITIAL_DONOR_HISTORY = [
   { id: 'dh1', date: 'Aug 15, 2026', where: 'St. Jude Emergency Hospital', bloodType: 'O-', units: 1, status: 'CONFIRMED' },
