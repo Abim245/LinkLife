@@ -184,22 +184,22 @@ export const listAlerts = asyncHandler(async (req, res) => {
   if (!isOwner && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
 
   const deliveries = await AlertDelivery.find({ requestId: request._id })
-    .populate('donorId', 'name phone donor.bloodType');
+  .populate('donorId', 'name phone donor');
 
   res.json(
-    deliveries
-      .filter((d) => d.donorId)
-      .map((d) => {
-        const accepted = d.response === 'accepted';
-        return {
-          donor: accepted ? d.donorId.name : 'Donor',
-          phone: accepted ? d.donorId.phone : undefined,
-          bloodType: d.donorId.donor?.bloodType,
-          channel: d.channel,
-          status: d.status,
-          response: d.response,
-          etaMinutes: d.etaMinutes,
-        };
-      })
+  deliveries
+    .filter((d) => d.donorId)
+    .map((d) => {
+      const accepted = d.response === 'accepted';
+      return {
+        donor: accepted ? d.donorId.name : 'Donor',
+        phone: accepted ? d.donorId.phone : undefined,
+        bloodType: d.donorId.donor?.bloodType || null,
+        channel: d.channel,
+        status: d.status,
+        response: d.response,
+        etaMinutes: d.etaMinutes ?? null,
+      };
+    })
   );
 });
