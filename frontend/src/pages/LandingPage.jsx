@@ -14,7 +14,7 @@ import { COMPATIBILITY_MAP, BLOOD_TYPES } from '../utils/compatibility';
 
 export const LandingPage = () => {
   const [heroAlertStatus, setHeroAlertStatus] = useState(null);
-  const [city] = useState('New York');
+  const [city] = useState('Nigeria');
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF9F8]">
