@@ -3,11 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, Download, Check, Plus, Minus } from 'lucide-react';
 import StatusPill from '../../components/common/StatusPill';
 import { useBloodData } from '../../context/BloodDataContext';
+import { useAuth } from '../../context/AuthContext';
 import { BLOOD_TYPES } from '../../utils/compatibility';
-import { api } from '../../lib/api';
+
 export const HospitalInventoryPage = () => {
   const navigate = useNavigate();
-  const { inventory, adjustStock, stockMovements, recordMovement } = useBloodData();
+  const { currentUser } = useAuth();
+  const { inventory, adjustStock, stockMovements, recordMovement, refreshInventory } =
+    useBloodData();
 
   // Stock movement form state
   const [moveType, setMoveType] = useState('O-');
@@ -17,17 +20,42 @@ export const HospitalInventoryPage = () => {
   const [moveNote, setMoveNote] = useState('');
   const [movementFilter, setMovementFilter] = useState('ALL');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [message, setMessage] = useState('Stock is up to date.');
+
+  const backPath = currentUser?.role === 'bloodbank' ? '/bloodbank' : '/hospital';
 
   const totalUnits = inventory.reduce((sum, item) => sum + item.units, 0);
-  const belowThresholdCount = inventory.filter((item) => item.status === 'LOW').length;
+  const lowTypes = inventory.filter((item) => item.status === 'LOW').map((item) => item.type);
+  const belowThresholdCount = lowTypes.length;
   const onWatchCount = inventory.filter((item) => item.status === 'WATCH').length;
+
+  const flash = (text) => {
+    setMessage(text);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
+  };
 
   const handleRecordSubmit = (e) => {
     e.preventDefault();
-    recordMovement(moveType, moveDirection, moveUnits, moveReason, moveNote);
+    const units = Number(moveUnits);
+    if (!units || units < 1) return;
+
+    if (moveDirection === 'remove') {
+      const have = inventory.find((i) => i.type === moveType)?.units ?? 0;
+      if (units > have) {
+        alert(`Not enough ${moveType} in stock (you have ${have}).`);
+        return;
+      }
+    }
+
+    recordMovement(moveType, moveDirection, units, moveReason, moveNote);
     setMoveNote('');
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    flash('Stock change recorded.');
+  };
+
+  const handleRefresh = async () => {
+    await refreshInventory();
+    flash('Stock is up to date.');
   };
 
   const filteredMovements = stockMovements.filter((m) => {
@@ -35,22 +63,19 @@ export const HospitalInventoryPage = () => {
     if (movementFilter === 'REMOVED') return m.change < 0;
     return true;
   });
-  async function handleInventory(e) {
-      e.preventDefault();
-      try {
-        const { data } = await api.get(`/emergencies/${id}`);
-        const { data: stock } = await api.get('/inventory');
-      } catch (err) {
-        setError(err.response?.data?.message || 'Login failed');
-      }
-    }
+
+  const filterClass = (f) =>
+    `px-2.5 py-1 rounded transition-colors ${
+      movementFilter === f ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'text-stone-600'
+    }`;
+
   return (
     <div className="min-h-screen bg-[#FAF9F8]">
       {/* Top Bar with Back Link */}
       <header className="bg-white border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link
-            to="/hospital"
+            to={backPath}
             className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700 hover:text-[#B81D24] transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -60,14 +85,14 @@ export const HospitalInventoryPage = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Header & Actions (UI/UX Page 21) */}
+        {/* Header & Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
               Inventory
             </h1>
             <p className="text-xs sm:text-sm text-stone-500 mt-1">
-              Stock last updated 12 min ago by Dr. Sarah Vance.
+              Changes are saved as you adjust the units.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -79,13 +104,10 @@ export const HospitalInventoryPage = () => {
               <span>Export CSV</span>
             </button>
             <button
-              onClick={() => {
-                setSaveSuccess(true);
-                setTimeout(() => setSaveSuccess(false), 3000);
-              }}
+              onClick={handleRefresh}
               className="px-5 py-2 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white text-xs font-semibold shadow-xs transition-colors"
             >
-              Save stock changes
+              Refresh stock
             </button>
           </div>
         </div>
@@ -93,7 +115,7 @@ export const HospitalInventoryPage = () => {
         {saveSuccess && (
           <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
             <Check className="w-4 h-4 text-emerald-600" />
-            <span>Stock updates synchronized and logged!</span>
+            <span>{message}</span>
           </div>
         )}
 
@@ -127,7 +149,7 @@ export const HospitalInventoryPage = () => {
           </div>
         </div>
 
-        {/* Low Stock Warning Banner */}
+        {/* Low Stock Warning Banner (names the types that are actually low) */}
         {belowThresholdCount > 0 && (
           <div className="bg-[#FAF3F1] border border-red-200 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -136,7 +158,8 @@ export const HospitalInventoryPage = () => {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-stone-900">
-                  O− is below your low-stock threshold
+                  {lowTypes.join(', ')} {lowTypes.length > 1 ? 'are' : 'is'} below your low-stock
+                  threshold
                 </h3>
                 <p className="text-xs text-stone-600 mt-0.5">
                   Declare a shortage to alert eligible donors near you.
@@ -227,11 +250,13 @@ export const HospitalInventoryPage = () => {
                         <button
                           onClick={() => {
                             setMoveType(item.type);
-                            document.getElementById('record-change')?.scrollIntoView({ behavior: 'smooth' });
+                            document
+                              .getElementById('record-change')
+                              ?.scrollIntoView({ behavior: 'smooth' });
                           }}
                           className="font-semibold text-[#B81D24] hover:underline"
                         >
-                          History
+                          Record
                         </button>
                       </td>
                     </tr>
@@ -242,7 +267,7 @@ export const HospitalInventoryPage = () => {
           </div>
         </div>
 
-        {/* 2 Bottom Cards: Record a stock change & Movement log (Page 21) */}
+        {/* 2 Bottom Cards: Record a stock change & Movement log */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left: Record a stock change */}
           <div
@@ -332,36 +357,20 @@ export const HospitalInventoryPage = () => {
           {/* Right: Movement log */}
           <div className="lg:col-span-7 bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-stone-900">Movement log</h2>
-              {/* Filter Pills */}
+              <div>
+                <h2 className="text-base font-bold text-stone-900">Movement log</h2>
+                <p className="text-[11px] text-stone-500 mt-0.5">Changes made in this session.</p>
+              </div>
               <div className="inline-flex rounded-lg border border-stone-200 p-0.5 bg-stone-50 text-[11px] font-medium">
-                <button
-                  onClick={() => setMovementFilter('ALL')}
-                  className={`px-2.5 py-1 rounded transition-colors ${
-                    movementFilter === 'ALL'
-                      ? 'bg-white text-stone-900 shadow-xs font-semibold'
-                      : 'text-stone-600'
-                  }`}
-                >
+                <button onClick={() => setMovementFilter('ALL')} className={filterClass('ALL')}>
                   All
                 </button>
-                <button
-                  onClick={() => setMovementFilter('ADDED')}
-                  className={`px-2.5 py-1 rounded transition-colors ${
-                    movementFilter === 'ADDED'
-                      ? 'bg-white text-stone-900 shadow-xs font-semibold'
-                      : 'text-stone-600'
-                  }`}
-                >
+                <button onClick={() => setMovementFilter('ADDED')} className={filterClass('ADDED')}>
                   Added
                 </button>
                 <button
                   onClick={() => setMovementFilter('REMOVED')}
-                  className={`px-2.5 py-1 rounded transition-colors ${
-                    movementFilter === 'REMOVED'
-                      ? 'bg-white text-stone-900 shadow-xs font-semibold'
-                      : 'text-stone-600'
-                  }`}
+                  className={filterClass('REMOVED')}
                 >
                   Removed
                 </button>
@@ -380,14 +389,19 @@ export const HospitalInventoryPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-stone-800">
+                  {filteredMovements.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-4 px-3 text-center text-stone-400">
+                        No changes recorded yet.
+                      </td>
+                    </tr>
+                  )}
                   {filteredMovements.map((m) => (
                     <tr key={m.id} className="hover:bg-stone-50/60">
                       <td className="py-2.5 px-3 text-stone-500">{m.when}</td>
                       <td className="py-2.5 px-3 font-bold text-[#B81D24]">{m.type}</td>
                       <td className="py-2.5 px-3 font-mono font-bold">
-                        <span
-                          className={m.change > 0 ? 'text-emerald-700' : 'text-[#B81D24]'}
-                        >
+                        <span className={m.change > 0 ? 'text-emerald-700' : 'text-[#B81D24]'}>
                           {m.change > 0 ? `+${m.change}` : m.change}
                         </span>
                       </td>
@@ -397,15 +411,6 @@ export const HospitalInventoryPage = () => {
                   ))}
                 </tbody>
               </table>
-            </div>
-
-            <div className="text-right pt-1">
-              <button
-                onClick={() => alert('Full audit log export generated.')}
-                className="text-xs font-semibold text-[#B81D24] hover:underline"
-              >
-                View full log
-              </button>
             </div>
           </div>
         </div>

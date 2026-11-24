@@ -8,30 +8,13 @@ export const DonorAlertResponsePage = () => {
   const navigate = useNavigate();
   const { emergencies, respondToEmergency } = useBloodData();
 
- const emergency = emergencies.find((e) => e.id === id);
+  const emergency = emergencies.find((e) => e.id === id);
   const [selectedEta, setSelectedEta] = useState('20 min');
   const [confirmed, setConfirmed] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [sending, setSending] = useState(false);
 
-    const handleAccept = async () => {
-      setSending(true);
-      const ok = await respondToEmergency(emergency.id, 'ACCEPTED', selectedEta);
-      setSending(false);
-      if (ok) setConfirmed(true);
-    };
-
-    const handleDecline = async () => {
-      setSending(true);
-      const ok = await respondToEmergency(emergency.id, 'DECLINED');
-      setSending(false);
-      if (ok) setDeclined(true);
-    };
-
   if (!emergency) {
-    const showConfirmed = confirmed || emergency.myResponse === 'accepted';
-    const showDeclined = declined || emergency.myResponse === 'declined';
-    const etaShown = emergency.myEta || selectedEta;
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAF9F8] p-6 text-center">
         <div className="space-y-3">
@@ -43,6 +26,27 @@ export const DonorAlertResponsePage = () => {
       </div>
     );
   }
+
+  // Reloading the page after answering still shows the right screen
+  const showConfirmed = confirmed || emergency.myResponse === 'accepted';
+  const showDeclined = declined || emergency.myResponse === 'declined';
+  const etaShown = emergency.myEta || selectedEta;
+  const isClosed = emergency.status !== 'LIVE';
+
+  const handleAccept = async () => {
+    setSending(true);
+    const ok = await respondToEmergency(emergency.id, 'ACCEPTED', selectedEta);
+    setSending(false);
+    if (ok) setConfirmed(true);
+  };
+
+  const handleDecline = async () => {
+    setSending(true);
+    const ok = await respondToEmergency(emergency.id, 'DECLINED');
+    setSending(false);
+    if (ok) setDeclined(true);
+  };
+
   return (
     <div className="min-h-screen bg-[#FAF9F8] flex flex-col justify-between">
       {/* Top Bar with Brand */}
@@ -62,9 +66,8 @@ export const DonorAlertResponsePage = () => {
         </Link>
       </header>
 
-      {/* Main Alert Card (UI/UX Page 15 & 16 exact replica) */}
       <main className="flex-1 max-w-lg w-full mx-auto px-4 py-4 flex flex-col justify-center">
-        {confirmed ? (
+        {showConfirmed ? (
           <div className="bg-white rounded-3xl p-8 border border-stone-200/80 shadow-xl text-center space-y-5">
             <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-8 h-8 stroke-[2.5]" />
@@ -73,15 +76,15 @@ export const DonorAlertResponsePage = () => {
               Thank you! You're on the way.
             </h1>
             <p className="text-sm text-stone-600 leading-relaxed">
-              We notified <strong className="text-stone-800">{emergency.hospitalName}</strong> of
-              your estimated arrival time of <strong className="text-stone-800">{selectedEta}</strong>.
+              We notified{' '}
+              <strong className="text-stone-800">{emergency.hospitalName || 'the hospital'}</strong>{' '}
+              of your estimated arrival time of <strong className="text-stone-800">{etaShown}</strong>.
             </p>
 
             <div className="bg-[#FAF3F1] border border-red-100 rounded-xl p-4 text-xs text-stone-800 text-left space-y-1.5">
-              <div className="font-bold text-[#B81D24]">Hospital Check-in Desk:</div>
-              <div>Entrance: Emergency Ambulance Bay 3</div>
-              <div>Coordinator: Dr. Sarah Vance</div>
-              <div>Phone: +1 (555) 019-2834</div>
+              <div className="font-bold text-[#B81D24]">Where to go</div>
+              <div>Please head to the hospital's emergency entrance.</div>
+              {emergency.notes && <div>Note from the hospital: {emergency.notes}</div>}
             </div>
 
             <button
@@ -91,7 +94,7 @@ export const DonorAlertResponsePage = () => {
               Back to donor home
             </button>
           </div>
-        ) : declined ? (
+        ) : showDeclined ? (
           <div className="bg-white rounded-3xl p-8 border border-stone-200/80 shadow-xl text-center space-y-5">
             <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">
               Alert acknowledged
@@ -106,49 +109,53 @@ export const DonorAlertResponsePage = () => {
               Back to donor home
             </button>
           </div>
+        ) : isClosed ? (
+          <div className="bg-white rounded-3xl p-8 border border-stone-200/80 shadow-xl text-center space-y-5">
+            <h1 className="text-2xl font-extrabold text-stone-900 tracking-tight">
+              This request is closed
+            </h1>
+            <p className="text-sm text-stone-600">
+              Enough donors have already responded, or the hospital closed the request. Thank you for
+              being ready to help.
+            </p>
+            <button
+              onClick={() => navigate('/donor')}
+              className="w-full py-3 rounded-xl bg-stone-900 text-white font-semibold text-sm shadow-xs transition-colors"
+            >
+              Back to donor home
+            </button>
+          </div>
         ) : (
           <div className="space-y-6">
-            {/* Crimson Red Card (Page 15) */}
+            {/* Crimson Red Card */}
             <div className="bg-[#B81D24] text-white rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
-              {/* Badge */}
               <div className="inline-block px-3 py-1 rounded-full bg-white/20 text-white text-xs font-extrabold tracking-wider uppercase">
-                {emergency.urgency.toUpperCase()} EMERGENCY.
+                {emergency.urgency} EMERGENCY
               </div>
 
-              {/* Blood Badge & Hospital Info */}
               <div className="flex items-start gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-white text-[#B81D24] flex items-center justify-center font-black text-2xl shadow-sm shrink-0">
                   {emergency.bloodType}
                 </div>
                 <div>
                   <h1 className="text-xl sm:text-2xl font-bold leading-snug">
-                    {emergency.hospitalName} needs {emergency.unitsNeeded} units
+                    {emergency.hospitalName || 'A hospital'} needs {emergency.unitsNeeded} units
                   </h1>
                   <p className="text-xs sm:text-sm text-red-100 mt-1">
-                    {emergency.distanceKm != null ? `${emergency.distanceKm} km from you` : 'Near you'} · Needed by {emergency.neededBy}
+                    {emergency.distanceKm != null ? `${emergency.distanceKm} km from you` : 'Near you'}{' '}
+                    · Needed by {emergency.neededBy}
                   </p>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="space-y-1.5 pt-2">
-                <div className="flex justify-between text-xs font-semibold text-red-100">
-                  <span>3 of 4 donors on the way</span>
-                  <span>75%</span>
-                </div>
-                <div className="w-full h-2.5 bg-black/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-white rounded-full w-3/4" />
                 </div>
               </div>
             </div>
 
-            {/* How soon can you get there? Selector (Page 15) */}
+            {/* ETA Selector */}
             <div className="space-y-3">
               <label className="block text-sm font-bold text-stone-900">
                 How soon can you get there?
               </label>
               <div className="grid grid-cols-4 gap-2.5">
-                {['10 min', '20 min', '30 min', '45+'].map((eta) => (
+                {['10 min', '20 min', '30 min', '45 min'].map((eta) => (
                   <button
                     key={eta}
                     type="button"
@@ -165,28 +172,28 @@ export const DonorAlertResponsePage = () => {
               </div>
             </div>
 
-            {/* Action Buttons (Page 16) */}
+            {/* Action Buttons */}
             <div className="space-y-3 pt-2">
               <button
                 type="button"
                 onClick={handleAccept}
-                className="w-full py-4 rounded-xl bg-[#B81D24] hover:bg-[#9E151E] text-white font-bold text-base shadow-sm transition-all active:scale-95"
+                disabled={sending}
+                className="w-full py-4 rounded-xl bg-[#B81D24] hover:bg-[#9E151E] text-white font-bold text-base shadow-sm transition-all active:scale-95 disabled:opacity-60"
               >
-                I can come
+                {sending ? 'Sending...' : 'I can come'}
               </button>
               <button
                 type="button"
                 onClick={handleDecline}
-                className="w-full py-3.5 rounded-xl bg-white hover:bg-stone-50 text-stone-700 font-semibold text-sm border border-stone-300 transition-colors"
+                disabled={sending}
+                className="w-full py-3.5 rounded-xl bg-white hover:bg-stone-50 text-stone-700 font-semibold text-sm border border-stone-300 transition-colors disabled:opacity-60"
               >
                 Can't make it
               </button>
             </div>
 
-            {/* Footnote (Page 16) */}
             <p className="text-xs text-stone-500 text-center leading-relaxed px-4">
-              This link is just for you and works once. After you accept, you'll see directions and the
-              hospital's contact desk.
+              After you accept, the hospital sees your name and arrival time.
             </p>
           </div>
         )}

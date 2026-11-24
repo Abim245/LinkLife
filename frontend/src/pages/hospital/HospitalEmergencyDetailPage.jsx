@@ -1,17 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import BloodBadge from '../../components/common/BloodBadge';
 import StatusPill from '../../components/common/StatusPill';
 import InteractiveMapMock from '../../components/common/InteractiveMapMock';
 import { useBloodData } from '../../context/BloodDataContext';
-import {api} from '../../lib/api';
+
 export const HospitalEmergencyDetailPage = () => {
   const { id } = useParams();
-  const { emergencies, updateEmergencyStatus, widenRadius } = useBloodData();
+  const { emergencies, updateEmergencyStatus, widenRadius, refreshEmergency } = useBloodData();
 
-  const emergency = emergencies.find((e) => e.id === id) || emergencies[0];
+  const emergency = emergencies.find((e) => e.id === id);
   const [filterTab, setFilterTab] = useState('ALL');
+
+  // Load the donors who were alerted for this emergency (names show only after they accept)
+  useEffect(() => {
+    if (id && refreshEmergency) refreshEmergency(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  if (!emergency) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FAF9F8] p-6 text-center">
+        <div className="space-y-3">
+          <p className="text-sm text-stone-600">Loading this emergency, or it doesn't exist.</p>
+          <Link to="/hospital" className="text-sm font-semibold text-[#B81D24] hover:underline">
+            Back to dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const filteredResponders = emergency.responders.filter((r) => {
     if (filterTab === 'ON_THE_WAY') return r.status === 'ON THE WAY';
@@ -20,19 +39,15 @@ export const HospitalEmergencyDetailPage = () => {
     return true;
   });
 
+  const percent = emergency.unitsNeeded
+    ? Math.round((emergency.unitsConfirmed / emergency.unitsNeeded) * 100)
+    : 0;
 
+  const tabClass = (tab) =>
+    `px-3 py-1 rounded-md transition-colors ${
+      filterTab === tab ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'text-stone-600'
+    }`;
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    try {
-      const { data } = await api.post(`/emergencies/${requestId}/respond`, { response: 'accepted', etaMinutes: 15 });
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user)); // role, orgId, name
-      // then navigate by data.user.role: donor -> donor home, hospital -> dashboard
-    } catch (err) {
-      setError(err.response?.data?.message || 'Request failed');
-    }
-  }
   return (
     <div className="min-h-screen bg-[#FAF9F8]">
       {/* Top Bar with Back Link */}
@@ -53,7 +68,7 @@ export const HospitalEmergencyDetailPage = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Top Emergency Card (UI/UX Page 12 exact replica) */}
+        {/* Top Emergency Card */}
         <div className="bg-white rounded-2xl p-6 sm:p-8 border border-stone-200/80 shadow-xs space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
@@ -72,21 +87,23 @@ export const HospitalEmergencyDetailPage = () => {
               </div>
             </div>
 
-            {/* Top Right Action Buttons */}
-            <div className="flex items-center gap-3 self-start sm:self-auto">
-              <button
-                onClick={() => updateEmergencyStatus(emergency.id, 'FULFILLED')}
-                className="px-5 py-2.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white text-xs font-semibold shadow-xs transition-colors"
-              >
-                Mark fulfilled
-              </button>
-              <button
-                onClick={() => updateEmergencyStatus(emergency.id, 'CLOSED')}
-                className="px-5 py-2.5 rounded-lg bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold border border-stone-300 transition-colors"
-              >
-                Close request
-              </button>
-            </div>
+            {/* Top Right Action Buttons (only while the request is open) */}
+            {emergency.status === 'LIVE' && (
+              <div className="flex items-center gap-3 self-start sm:self-auto">
+                <button
+                  onClick={() => updateEmergencyStatus(emergency.id, 'FULFILLED')}
+                  className="px-5 py-2.5 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white text-xs font-semibold shadow-xs transition-colors"
+                >
+                  Mark fulfilled
+                </button>
+                <button
+                  onClick={() => updateEmergencyStatus(emergency.id, 'CLOSED')}
+                  className="px-5 py-2.5 rounded-lg bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold border border-stone-300 transition-colors"
+                >
+                  Close request
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Progress bar */}
@@ -95,68 +112,39 @@ export const HospitalEmergencyDetailPage = () => {
               <span>
                 {emergency.unitsConfirmed} of {emergency.unitsNeeded} donors confirmed
               </span>
-              <span className="text-[#B81D24]">
-                {Math.round((emergency.unitsConfirmed / emergency.unitsNeeded) * 100)}%
-              </span>
+              <span className="text-[#B81D24]">{percent}%</span>
             </div>
             <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-[#B81D24] rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(
-                    100,
-                    (emergency.unitsConfirmed / emergency.unitsNeeded) * 100
-                  )}%`,
-                }}
+                style={{ width: `${Math.min(100, percent)}%` }}
               />
             </div>
           </div>
         </div>
 
-        {/* 2-Column Split: Donor Responses (Left) & Search/Details/Activity (Right) */}
+        {/* 2-Column Split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Donor Responses (Page 12) */}
+          {/* Left Column: Donor Responses */}
           <div className="lg:col-span-7 bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-xs space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h2 className="text-lg font-bold text-stone-900">Donor responses</h2>
-              {/* Filter Tabs */}
               <div className="inline-flex rounded-lg border border-stone-200 p-0.5 bg-stone-50 text-xs font-medium">
-                <button
-                  onClick={() => setFilterTab('ALL')}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    filterTab === 'ALL' ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'text-stone-600'
-                  }`}
-                >
-                  All [{emergency.responders.length}]
+                <button onClick={() => setFilterTab('ALL')} className={tabClass('ALL')}>
+                  All ({emergency.responders.length})
                 </button>
-                <button
-                  onClick={() => setFilterTab('ON_THE_WAY')}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    filterTab === 'ON_THE_WAY' ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'text-stone-600'
-                  }`}
-                >
+                <button onClick={() => setFilterTab('ON_THE_WAY')} className={tabClass('ON_THE_WAY')}>
                   On the way
                 </button>
-                <button
-                  onClick={() => setFilterTab('AWAITING')}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    filterTab === 'AWAITING' ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'text-stone-600'
-                  }`}
-                >
+                <button onClick={() => setFilterTab('AWAITING')} className={tabClass('AWAITING')}>
                   Awaiting
                 </button>
-                <button
-                  onClick={() => setFilterTab('DECLINED')}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    filterTab === 'DECLINED' ? 'bg-white text-stone-900 shadow-xs font-semibold' : 'text-stone-600'
-                  }`}
-                >
+                <button onClick={() => setFilterTab('DECLINED')} className={tabClass('DECLINED')}>
                   Declined
                 </button>
               </div>
             </div>
 
-            {/* Table */}
             <div className="border border-stone-200 rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#FAF9F8] text-stone-600 font-semibold border-b border-stone-200">
@@ -189,37 +177,39 @@ export const HospitalEmergencyDetailPage = () => {
               </table>
             </div>
 
-            {/* Privacy Subtext */}
             <p className="text-xs text-stone-500 pt-1">
               Donor names are shown only after they accept. Contact details are released on arrival.
             </p>
           </div>
 
-          {/* Right Column: Search Area + Request Details + Activity */}
+          {/* Right Column */}
           <div className="lg:col-span-5 space-y-6">
-            {/* Search Area Card with 10km and 25km rings map */}
+            {/* Search Area */}
             <div className="bg-white rounded-2xl p-6 border border-stone-200/80 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-stone-900">Search area</h2>
               <InteractiveMapMock
                 mode="rings"
                 radiusKm={emergency.currentRadiusKm}
-                outerRadiusKm={25}
+                outerRadiusKm={50}
                 height="h-56"
               />
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className="text-stone-700 font-medium">
-                  Now <strong className="text-stone-900">{emergency.currentRadiusKm} km</strong> · widening in [{emergency.wideningIn}]
+                  Now <strong className="text-stone-900">{emergency.currentRadiusKm} km</strong>
+                  {emergency.wideningIn && emergency.wideningIn !== '—' ? ` · ${emergency.wideningIn}` : ''}
                 </span>
-                <button
-                  onClick={() => widenRadius(emergency.id)}
-                  className="px-3 py-1.5 rounded-md bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 font-semibold text-xs shadow-xs transition-colors"
-                >
-                  Widen now
-                </button>
+                {emergency.status === 'LIVE' && (
+                  <button
+                    onClick={() => widenRadius(emergency.id)}
+                    className="px-3 py-1.5 rounded-md bg-white border border-stone-300 hover:bg-stone-50 text-stone-800 font-semibold text-xs shadow-xs transition-colors"
+                  >
+                    Widen now
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Request Details Card */}
+            {/* Request Details */}
             <div className="bg-white rounded-2xl p-6 border border-stone-200/80 shadow-xs space-y-3">
               <h2 className="text-base font-bold text-stone-900">Request details</h2>
               <dl className="divide-y divide-stone-100 text-xs">
@@ -236,22 +226,25 @@ export const HospitalEmergencyDetailPage = () => {
                   <dd className="font-semibold text-stone-800">{emergency.urgency}</dd>
                 </div>
                 <div className="py-2 flex justify-between">
-                  <dt className="text-stone-500 font-medium">Declared by</dt>
-                  <dd className="font-semibold text-stone-800">{emergency.coordinatorName}</dd>
+                  <dt className="text-stone-500 font-medium">Donors alerted</dt>
+                  <dd className="font-semibold text-stone-800">{emergency.donorsAlerted}</dd>
                 </div>
                 <div className="py-2">
                   <dt className="text-stone-500 font-medium mb-1">Notes</dt>
                   <dd className="text-stone-800 bg-[#FAF9F8] p-2.5 rounded-lg border border-stone-200 leading-relaxed">
-                    {emergency.notes || 'Emergency entrance open 24/7.'}
+                    {emergency.notes || 'No notes.'}
                   </dd>
                 </div>
               </dl>
             </div>
 
-            {/* Activity Stream Card */}
+            {/* Activity */}
             <div className="bg-white rounded-2xl p-6 border border-stone-200/80 shadow-xs space-y-4">
               <h2 className="text-base font-bold text-stone-900">Activity</h2>
               <ul className="space-y-3 text-xs">
+                {emergency.activityLog.length === 0 && (
+                  <li className="text-stone-400">No activity yet.</li>
+                )}
                 {emergency.activityLog.map((act, i) => (
                   <li key={i} className="flex items-start gap-2.5">
                     <span
