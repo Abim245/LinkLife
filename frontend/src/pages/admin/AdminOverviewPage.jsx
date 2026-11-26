@@ -181,7 +181,7 @@ export const AdminOverviewPage = () => {
 
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-xs border border-stone-100 rounded-xl p-4 bg-[#FAF9F8]">
               <div>
-                <dt className="text-stone-500 font-medium">Organization</dt>
+                <dt className="text-stone-500 font-medium"></dt>
                 <dd className="font-semibold text-stone-900 mt-0.5">{selectedApp.name}</dd>
               </div>
               <div>

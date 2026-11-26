@@ -3,13 +3,15 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Droplet, Building2, Boxes } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BLOOD_TYPES } from '../../utils/compatibility';
-import InteractiveMapMock from '../../components/common/InteractiveMapMock';
 import { normalizePhone } from '../../lib/format';
+import InteractiveMapMock from '../../components/common/InteractiveMapMock';
+
+// Browser location as [longitude, latitude]
 const getPosition = () =>
   new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('Location is not available on this device'));
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve([pos.coords.longitude, pos.coords.latitude]), // [lng, lat]
+      (pos) => resolve([pos.coords.longitude, pos.coords.latitude]),
       () => reject(new Error('Allow location access so we can place your organization on the map')),
       { timeout: 10000 }
     );
@@ -20,20 +22,24 @@ const apiError = (err) => {
   if (d?.errors?.length) return d.errors.map((x) => `${x.field}: ${x.message}`).join(', ');
   return d?.message || err.message || 'Something went wrong';
 };
+
+const inputClass =
+  'w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] focus:border-transparent bg-white';
+
 export const RegisterPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login } = useAuth();
   const { registerWithApi } = useAuth();
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
   const roleParam = searchParams.get('role');
   const [selectedRole, setSelectedRole] = useState(
     roleParam && ['donor', 'hospital', 'bloodbank'].includes(roleParam) ? roleParam : 'donor'
   );
-  const [adminStats, setAdminStats] = useState({ verifiedOrgs: 24, donors: 1420 });
-  
-  // Form states for donor
+
+  // Form state for donor
   const [donorForm, setDonorForm] = useState({
     fullName: '',
     phone: '',
@@ -44,11 +50,10 @@ export const RegisterPage = () => {
     agreeTerms: true,
   });
 
-  // Form states for organization
+  // Form state for organization
   const [orgForm, setOrgForm] = useState({
     orgName: '',
     licenseNumber: '',
-    licenseFile: null,
     address: '',
     contactName: '',
     jobTitle: '',
@@ -58,80 +63,102 @@ export const RegisterPage = () => {
     isAuthorized: true,
     agreeTerms: true,
   });
-  const handleApprove = async () => {
-  try {
-    await updateApplicationStatus(selectedApp.id, 'APPROVED');
-    setActionSuccess(`Approved ${selectedApp.name}!`);
-    setTimeout(() => setActionSuccess(''), 3000);
-  } catch (err) {
-    alert(err.response?.data?.message || 'Could not approve this organization');
-  }
-  };
- const handleDonorSubmit = async (e) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
-  try {
-    const phone = normalizePhone(donorForm.phone);
-    // Location is optional for donors: they can set it later from the dashboard
-    let location;
-    if (donorForm.consentLocation) {
-      try {
-        location = { coordinates: await getPosition() };
-      } catch {
-        /* continue without it */
-      }
-    }
 
-    await registerWithApi({
-      role: 'donor',
-      name: donorForm.fullName,
-      phone,
-      password: donorForm.password,
-      bloodType: donorForm.bloodType,
-      ...(location && { location }),
-    });
-    navigate(`/verify-phone?phone=${encodeURIComponent(phone)}&role=donor`);
-  } catch (err) {
-    setError(apiError(err));
-  } finally {
-    setLoading(false);
-  }
+  const handleDonorSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const phone = normalizePhone(donorForm.phone);
+
+      // Location is optional for donors: they can set it later from the dashboard
+      let location;
+      if (donorForm.consentLocation) {
+        try {
+          location = { coordinates: await getPosition() };
+        } catch {
+          /* continue without it */
+        }
+      }
+
+      await registerWithApi({
+        role: 'donor',
+        name: donorForm.fullName,
+        phone,
+        password: donorForm.password,
+        bloodType: donorForm.bloodType,
+        ...(location && { location }),
+      });
+      navigate(`/verify-phone?phone=${encodeURIComponent(phone)}&role=donor`);
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleOrgSubmit = async (e) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
-  try {
-    const phone = normalizePhone(orgForm.phone247);
-    const coordinates = await getPosition(); // required: this is where donors are searched from
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const phone = normalizePhone(orgForm.phone247);
+      const coordinates = await getPosition(); // required: donors are searched around this point
 
-    await registerWithApi({
-      role: selectedRole,
-      name: orgForm.contactName,
-      phone,
-      password: orgForm.password,
-      orgName: orgForm.orgName,
-      address: orgForm.address,
-      location: { coordinates },
-      registrationNumber: orgForm.licenseNumber, 
-      jobTitle: orgForm.jobTitle, 
-      email: orgForm.officialEmail,
-    });
-    navigate(`/verify-phone?phone=${encodeURIComponent(phone)}&role=${selectedRole}`);
-  } catch (err) {
-    setError(apiError(err));
-  } finally {
-    setLoading(false);
-  }
+      await registerWithApi({
+        role: selectedRole,
+        name: orgForm.contactName,
+        phone,
+        password: orgForm.password,
+        orgName: orgForm.orgName,
+        address: orgForm.address,
+        location: { coordinates },
+        registrationNumber: orgForm.licenseNumber,
+        jobTitle: orgForm.jobTitle,
+        email: orgForm.officialEmail,
+      });
+      navigate(`/verify-phone?phone=${encodeURIComponent(phone)}&role=${selectedRole}`);
+    } catch (err) {
+      setError(apiError(err));
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const roleCard = (role, Icon, title, text) => (
+    <button
+      type="button"
+      onClick={() => setSelectedRole(role)}
+      className={`p-4 rounded-xl border text-left transition-all relative ${
+        selectedRole === role
+          ? 'border-[#B81D24] bg-red-50/40 ring-1 ring-[#B81D24]'
+          : 'border-stone-200 bg-white hover:border-stone-300'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <Icon className={`w-5 h-5 ${selectedRole === role ? 'text-[#B81D24]' : 'text-stone-400'}`} />
+        <div
+          className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+            selectedRole === role ? 'border-[#B81D24] bg-[#B81D24]' : 'border-stone-300'
+          }`}
+        >
+          {selectedRole === role && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+        </div>
+      </div>
+      <div className="font-bold text-sm text-stone-900">{title}</div>
+      <div className="text-xs text-stone-500 mt-0.5 leading-snug">{text}</div>
+    </button>
+  );
+
+  const errorBox = error && (
+    <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">{error}</div>
+  );
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#FAF9F8]">
-      {/* Left Maroon Hero Panel (UI/UX Page 3 & 5 exact layout) */}
+      {/* Left Maroon Hero Panel */}
       <div className="w-full md:w-5/12 lg:w-4/12 bg-[#6B0E23] text-white p-8 md:p-12 lg:p-16 flex flex-col justify-between shrink-0">
         <div>
-          {/* Logo */}
           <Link to="/" className="inline-flex items-center gap-2 mb-12 sm:mb-16">
             <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#6B0E23]">
               <Droplet className="w-4 h-4 fill-[#6B0E23]" />
@@ -139,7 +166,6 @@ export const RegisterPage = () => {
             <span className="text-xl font-bold tracking-tight text-white">LifeLink</span>
           </Link>
 
-          {/* Heading */}
           {selectedRole === 'donor' ? (
             <div className="space-y-4">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
@@ -163,20 +189,16 @@ export const RegisterPage = () => {
           )}
         </div>
 
-        {/* Bottom Trust Note Card */}
         <div className="mt-12 bg-white/10 backdrop-blur-xs rounded-xl p-5 border border-white/15 text-xs text-red-100 leading-relaxed">
-          {selectedRole === 'donor' ? (
-            'Hospitals and blood banks are reviewed by an admin before they can declare emergencies. This keeps every alert trustworthy.'
-          ) : (
-            'Your exact location is what lets us find donors within range, so please pin it carefully.'
-          )}
+          {selectedRole === 'donor'
+            ? 'Hospitals and blood banks are reviewed by an admin before they can declare emergencies. This keeps every alert trustworthy.'
+            : 'Your location is what lets us find donors within range, so register from the place your emergency entrance is.'}
         </div>
       </div>
 
       {/* Right Form Panel */}
       <div className="flex-1 p-6 sm:p-10 lg:p-16 overflow-y-auto">
         <div className="max-w-xl mx-auto">
-          {/* Step Indicator */}
           <div className="text-xs font-bold uppercase tracking-wider text-[#B81D24] mb-1">
             STEP 1 OF 2
           </div>
@@ -190,77 +212,14 @@ export const RegisterPage = () => {
               I am signing up as
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Donor Option */}
-              <button
-                type="button"
-                onClick={() => setSelectedRole('donor')}
-                className={`p-4 rounded-xl border text-left transition-all relative ${
-                  selectedRole === 'donor'
-                    ? 'border-[#B81D24] bg-red-50/40 ring-1 ring-[#B81D24]'
-                    : 'border-stone-200 bg-white hover:border-stone-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <Droplet className={`w-5 h-5 ${selectedRole === 'donor' ? 'text-[#B81D24]' : 'text-stone-400'}`} />
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                    selectedRole === 'donor' ? 'border-[#B81D24] bg-[#B81D24]' : 'border-stone-300'
-                  }`}>
-                    {selectedRole === 'donor' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                </div>
-                <div className="font-bold text-sm text-stone-900">Donor</div>
-                <div className="text-xs text-stone-500 mt-0.5 leading-snug">Get alerts and donate nearby</div>
-              </button>
-
-              {/* Hospital Option */}
-              <button
-                type="button"
-                onClick={() => setSelectedRole('hospital')}
-                className={`p-4 rounded-xl border text-left transition-all relative ${
-                  selectedRole === 'hospital'
-                    ? 'border-[#B81D24] bg-red-50/40 ring-1 ring-[#B81D24]'
-                    : 'border-stone-200 bg-white hover:border-stone-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <Building2 className={`w-5 h-5 ${selectedRole === 'hospital' ? 'text-[#B81D24]' : 'text-stone-400'}`} />
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                    selectedRole === 'hospital' ? 'border-[#B81D24] bg-[#B81D24]' : 'border-stone-300'
-                  }`}>
-                    {selectedRole === 'hospital' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                </div>
-                <div className="font-bold text-sm text-stone-900">Hospital</div>
-                <div className="text-xs text-stone-500 mt-0.5 leading-snug">Declare shortages and track donors</div>
-              </button>
-
-              {/* Blood Bank Option */}
-              <button
-                type="button"
-                onClick={() => setSelectedRole('bloodbank')}
-                className={`p-4 rounded-xl border text-left transition-all relative ${
-                  selectedRole === 'bloodbank'
-                    ? 'border-[#B81D24] bg-red-50/40 ring-1 ring-[#B81D24]'
-                    : 'border-stone-200 bg-white hover:border-stone-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <Boxes className={`w-5 h-5 ${selectedRole === 'bloodbank' ? 'text-[#B81D24]' : 'text-stone-400'}`} />
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                    selectedRole === 'bloodbank' ? 'border-[#B81D24] bg-[#B81D24]' : 'border-stone-300'
-                  }`}>
-                    {selectedRole === 'bloodbank' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </div>
-                </div>
-                <div className="font-bold text-sm text-stone-900">Blood bank</div>
-                <div className="text-xs text-stone-500 mt-0.5 leading-snug">Manage stock and respond to requests</div>
-              </button>
+              {roleCard('donor', Droplet, 'Donor', 'Get alerts and donate nearby')}
+              {roleCard('hospital', Building2, 'Hospital', 'Declare shortages and track donors')}
+              {roleCard('bloodbank', Boxes, 'Blood bank', 'Manage stock and respond to requests')}
             </div>
           </div>
 
-          {/* Form Content: Donor vs Organization */}
           {selectedRole === 'donor' ? (
-            /* DONOR SIGN UP FORM (Page 3) */
+            /* DONOR SIGN UP FORM */
             <form onSubmit={handleDonorSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-stone-700 mb-1.5">
@@ -269,10 +228,10 @@ export const RegisterPage = () => {
                 <input
                   type="text"
                   required
-                  placeholder="Lucas Miller"
+                  placeholder="Your full name"
                   value={donorForm.fullName}
                   onChange={(e) => setDonorForm({ ...donorForm, fullName: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] focus:border-transparent bg-white"
+                  className={inputClass}
                 />
               </div>
 
@@ -284,13 +243,13 @@ export const RegisterPage = () => {
                   <input
                     type="tel"
                     required
-                    placeholder="+1 (555) 234-5678"
+                    placeholder="+2348012345678"
                     value={donorForm.phone}
                     onChange={(e) => setDonorForm({ ...donorForm, phone: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] focus:border-transparent bg-white"
+                    className={inputClass}
                   />
                   <span className="text-[11px] text-stone-500 mt-1 block">
-                    We'll text you a verification code.
+                    Include your country code. We'll text you a verification code.
                   </span>
                 </div>
 
@@ -301,7 +260,7 @@ export const RegisterPage = () => {
                   <select
                     value={donorForm.bloodType}
                     onChange={(e) => setDonorForm({ ...donorForm, bloodType: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] focus:border-transparent bg-white"
+                    className={inputClass}
                   >
                     {BLOOD_TYPES.map((type) => (
                       <option key={type} value={type}>
@@ -310,7 +269,7 @@ export const RegisterPage = () => {
                     ))}
                   </select>
                   <span className="text-[11px] text-stone-500 mt-1 block">
-                    Only shown for donors.
+                    Only shown to hospitals once you accept.
                   </span>
                 </div>
               </div>
@@ -322,20 +281,22 @@ export const RegisterPage = () => {
                 <input
                   type="password"
                   required
-                  placeholder="At least 8 characters"
+                  minLength={6}
+                  placeholder="At least 6 characters"
                   value={donorForm.password}
                   onChange={(e) => setDonorForm({ ...donorForm, password: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] focus:border-transparent bg-white"
+                  className={inputClass}
                 />
               </div>
 
-              {/* Checkboxes */}
               <div className="space-y-3 pt-3">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={donorForm.consentLocation}
-                    onChange={(e) => setDonorForm({ ...donorForm, consentLocation: e.target.checked })}
+                    onChange={(e) =>
+                      setDonorForm({ ...donorForm, consentLocation: e.target.checked })
+                    }
                     className="mt-0.5 h-4 w-4 rounded text-[#B81D24] focus:ring-[#B81D24] border-stone-300"
                   />
                   <span className="text-xs text-stone-600">
@@ -364,29 +325,34 @@ export const RegisterPage = () => {
                     className="mt-0.5 h-4 w-4 rounded text-[#B81D24] focus:ring-[#B81D24] border-stone-300"
                   />
                   <span className="text-xs text-stone-600">
-                    I agree to the <Link to="/terms" className="text-[#B81D24] underline">Terms</Link> and{' '}
-                    <Link to="/privacy" className="text-[#B81D24] underline">Privacy Policy</Link>.
+                    I agree to the{' '}
+                    <Link to="/terms" className="text-[#B81D24] underline">
+                      Terms
+                    </Link>{' '}
+                    and{' '}
+                    <Link to="/privacy" className="text-[#B81D24] underline">
+                      Privacy Policy
+                    </Link>
+                    .
                   </span>
                 </label>
               </div>
 
-             <div className="pt-4 space-y-3">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">{error}</div>
-              )}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors disabled:opacity-60"
-              >
-                {loading ? 'Creating account...' : 'Continue'}
-              </button>
-            </div>
+              <div className="pt-4 space-y-3">
+                {errorBox}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors disabled:opacity-60"
+                >
+                  {loading ? 'Creating account...' : 'Continue'}
+                </button>
+              </div>
             </form>
           ) : (
-            /* ORGANIZATION (HOSPITAL / BLOOD BANK) SIGN UP FORM (Page 5) */
+            /* ORGANIZATION (HOSPITAL / BLOOD BANK) SIGN UP FORM */
             <form onSubmit={handleOrgSubmit} className="space-y-6">
-              {/* SECTION: ORGANIZATION */}
+              {/* ORGANIZATION */}
               <div className="space-y-4">
                 <div className="text-xs font-bold uppercase tracking-wider text-stone-500">
                   ORGANIZATION
@@ -399,10 +365,12 @@ export const RegisterPage = () => {
                   <input
                     type="text"
                     required
-                    placeholder={selectedRole === 'hospital' ? 'St. Jude Emergency Hospital' : 'Metropolitan Blood Center'}
+                    placeholder={
+                      selectedRole === 'hospital' ? 'Your hospital name' : 'Your blood bank name'
+                    }
                     value={orgForm.orgName}
                     onChange={(e) => setOrgForm({ ...orgForm, orgName: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                    className={inputClass}
                   />
                 </div>
 
@@ -413,10 +381,10 @@ export const RegisterPage = () => {
                   <input
                     type="text"
                     required
-                    placeholder="HOSP-NY-84920"
+                    placeholder="e.g. HOSP-12345"
                     value={orgForm.licenseNumber}
                     onChange={(e) => setOrgForm({ ...orgForm, licenseNumber: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                    className={inputClass}
                   />
                 </div>
 
@@ -436,7 +404,7 @@ export const RegisterPage = () => {
                 </div>
               </div>
 
-              {/* SECTION: LOCATION */}
+              {/* LOCATION */}
               <div className="space-y-4 pt-2">
                 <div className="text-xs font-bold uppercase tracking-wider text-stone-500">
                   LOCATION
@@ -449,22 +417,26 @@ export const RegisterPage = () => {
                   <input
                     type="text"
                     required
-                    placeholder="450 1st Avenue, Manhattan, NY"
+                    placeholder="Street, city, state"
                     value={orgForm.address}
                     onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                    className={inputClass}
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-stone-700 mb-1.5">
-                    Drag the pin to your entrance
+                    Your position
                   </label>
                   <InteractiveMapMock mode="pin" editable={true} height="h-44" />
+                  <span className="text-[11px] text-stone-500 mt-1 block">
+                    We use your browser's location when you submit, so register from your site and
+                    allow location access.
+                  </span>
                 </div>
               </div>
 
-              {/* SECTION: CONTACT PERSON */}
+              {/* CONTACT PERSON */}
               <div className="space-y-4 pt-2">
                 <div className="text-xs font-bold uppercase tracking-wider text-stone-500">
                   CONTACT PERSON
@@ -478,10 +450,10 @@ export const RegisterPage = () => {
                     <input
                       type="text"
                       required
-                      placeholder="Dr. Sarah Vance"
+                      placeholder="Contact person"
                       value={orgForm.contactName}
                       onChange={(e) => setOrgForm({ ...orgForm, contactName: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                      className={inputClass}
                     />
                   </div>
 
@@ -492,10 +464,10 @@ export const RegisterPage = () => {
                     <input
                       type="text"
                       required
-                      placeholder="Head Emergency Coordinator"
+                      placeholder="e.g. Emergency Coordinator"
                       value={orgForm.jobTitle}
                       onChange={(e) => setOrgForm({ ...orgForm, jobTitle: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -508,10 +480,10 @@ export const RegisterPage = () => {
                     <input
                       type="email"
                       required
-                      placeholder="emergency@stjude.org"
+                      placeholder="name@organization.org"
                       value={orgForm.officialEmail}
                       onChange={(e) => setOrgForm({ ...orgForm, officialEmail: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                      className={inputClass}
                     />
                   </div>
 
@@ -522,13 +494,13 @@ export const RegisterPage = () => {
                     <input
                       type="tel"
                       required
-                      placeholder="+1 (555) 019-2834"
+                      placeholder="+2348012345678"
                       value={orgForm.phone247}
                       onChange={(e) => setOrgForm({ ...orgForm, phone247: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                      className={inputClass}
                     />
                     <span className="text-[11px] text-stone-500 mt-1 block">
-                      We'll text a verification code.
+                      Include your country code. We'll text a verification code.
                     </span>
                   </div>
                 </div>
@@ -540,15 +512,15 @@ export const RegisterPage = () => {
                   <input
                     type="password"
                     required
-                    placeholder="At least 8 characters"
+                    minLength={6}
+                    placeholder="At least 6 characters"
                     value={orgForm.password}
                     onChange={(e) => setOrgForm({ ...orgForm, password: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B81D24] bg-white"
+                    className={inputClass}
                   />
                 </div>
               </div>
 
-              {/* Organization Checkboxes */}
               <div className="space-y-3 pt-2">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
@@ -559,7 +531,8 @@ export const RegisterPage = () => {
                     className="mt-0.5 h-4 w-4 rounded text-[#B81D24] focus:ring-[#B81D24] border-stone-300"
                   />
                   <span className="text-xs text-stone-600">
-                    I confirm I am authorized to declare blood emergencies on behalf of this organization.
+                    I confirm I am authorized to declare blood emergencies on behalf of this
+                    organization.
                   </span>
                 </label>
 
@@ -572,28 +545,32 @@ export const RegisterPage = () => {
                     className="mt-0.5 h-4 w-4 rounded text-[#B81D24] focus:ring-[#B81D24] border-stone-300"
                   />
                   <span className="text-xs text-stone-600">
-                    I agree to the <Link to="/terms" className="text-[#B81D24] underline">Terms</Link> and{' '}
-                    <Link to="/privacy" className="text-[#B81D24] underline">Privacy Policy</Link>.
+                    I agree to the{' '}
+                    <Link to="/terms" className="text-[#B81D24] underline">
+                      Terms
+                    </Link>{' '}
+                    and{' '}
+                    <Link to="/privacy" className="text-[#B81D24] underline">
+                      Privacy Policy
+                    </Link>
+                    .
                   </span>
                 </label>
               </div>
 
-             <div className="pt-4 space-y-3">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">{error}</div>
-              )}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors disabled:opacity-60"
-              >
-                {submitting ? 'Creating account...' : 'Continue'}
-              </button>
-            </div>
+              <div className="pt-2 space-y-3">
+                {errorBox}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 rounded-lg bg-[#B81D24] hover:bg-[#9E151E] text-white font-semibold text-sm shadow-xs transition-colors disabled:opacity-60"
+                >
+                  {loading ? 'Submitting...' : 'Submit for review'}
+                </button>
+              </div>
             </form>
           )}
 
-          {/* Footer Login Link */}
           <div className="text-center mt-8 text-xs text-stone-600">
             Already have an account?{' '}
             <Link to="/login" className="font-semibold text-[#B81D24] hover:underline">
