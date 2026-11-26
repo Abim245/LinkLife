@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import User from '../models/User.js';
-import Organization from '../models/Organization.js';
+import Organization from '../models/.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { generateToken } from '../utils/generateToken.js';
 import { createOtp, checkOtp } from '../services/otp.js';

@@ -16,8 +16,8 @@ const userSchema = new Schema(
       radiusKm: { type: Number, default: 15 },
       quietHours: { start: String, end: String },
       location: {
-        type: { type: String, enum: ['Point'], default: 'Point' },
-        coordinates: { type: [Number], default: undefined }, // [lng, lat]
+        type: { type: String, enum: ['Point'] }, // no default: only donors who share a location get one
+        coordinates: { type: [Number], default: undefined },
       },
       locationUpdatedAt: Date,
     },
