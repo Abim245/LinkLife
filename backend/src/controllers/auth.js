@@ -80,6 +80,9 @@ export const register = asyncHandler(async (req, res) => {
       contactPhone: b.phone,
       location: { type: 'Point', coordinates: b.location.coordinates },
       verified: false, // admin must verify before declaring emergencies
+      registrationNumber: b.registrationNumber, 
+      jobTitle: b.jobTitle, 
+      email: b.email
     });
     user = await User.create({
       role: b.role,
