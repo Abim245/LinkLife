@@ -242,7 +242,7 @@ export const BloodDataProvider = ({ children }) => {
   const [users, setUsers] = useState(INITIAL_USERS);
   const [stockMovements, setStockMovements] = useState(INITIAL_STOCK_MOVEMENTS);
   const [donorHistory, setDonorHistory] = useState(INITIAL_DONOR_HISTORY);
-
+  const [adminStats, setAdminStats] = useState({ verifiedOrgs: 0, donors: 0 });
   // Active donor emergency response state
   const [donorAlertResponse, setDonorAlertResponse] = useState(null);
   const [selectedEta, setSelectedEta] = useState('20 min');
@@ -270,6 +270,25 @@ export const BloodDataProvider = ({ children }) => {
     /* donors aren't allowed to read the alert list */
   }
   };
+  const refreshAdmin = async () => {
+  if (!currentUser?.id || currentUser.role !== 'admin') return;
+  try {
+    const { data: ov } = await api.get('/admin/overview');
+    const apps = ov.applications.map((a) => ({
+      ...a,
+      submittedAt: new Date(a.submittedAt).toLocaleString(),
+    }));
+    setApplications(apps);
+    setSelectedAppId((cur) =>
+      cur && apps.some((a) => a.id === cur)
+        ? cur
+        : (apps.find((a) => a.status === 'PENDING') || apps[0])?.id || null
+    );
+    setAdminStats(ov.stats);
+  } catch (err) {
+    console.error('Admin load failed:', err.message);
+  }
+};
   const refreshInventory = async () => {
   if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
   try {
@@ -290,7 +309,7 @@ export const BloodDataProvider = ({ children }) => {
       const { data } = await api.get('/emergencies');
       const mapped = data.map((r) => mapEmergency(r, currentUser.orgName));
       setEmergencies(mapped);
-
+      if (currentUser.role === 'admin') refreshAdmin();
       if (isOrg) {
         mapped.filter((e) => e.status === 'LIVE').forEach((e) => refreshEmergency(e.id));
         const { data: inv } = await api.get('/inventory');
@@ -344,6 +363,12 @@ export const BloodDataProvider = ({ children }) => {
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+  useEffect(() => {
+  if (!currentUser?.id || currentUser.role !== 'admin') return;
+  const timer = setInterval(refreshAdmin, 15000);
+  return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [currentUser?.id]);
   const widenRadius = async (id) => {
   try {
     const { data } = await api.post(`/emergencies/${id}/escalate`);
@@ -442,11 +467,14 @@ const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
   };
 
   // Admin approves / rejects / requests changes
-  const updateApplicationStatus = (appId, status, note = '') => {
-    setApplications((prev) =>
-      prev.map((a) => (a.id === appId ? { ...a, status, adminNote: note } : a))
-    );
-  };
+ const updateApplicationStatus = async (appId, status, note = '') => {
+  if (status === 'APPROVED' && currentUser?.id) {
+    await api.patch(`/admin/orgs/${appId}/verify`); // throws on failure, so the screen doesn't claim success
+  }
+  setApplications((prev) =>
+    prev.map((a) => (a.id === appId ? { ...a, status, adminNote: note } : a))
+  );
+};
 
   // Admin user actions
   const updateUserStatus = (userId, newStatus) => {

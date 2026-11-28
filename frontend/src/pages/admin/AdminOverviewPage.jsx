@@ -3,8 +3,9 @@ import { Search, CheckCircle2, FileText, MapPin, Plus } from 'lucide-react';
 import OrgSidebar from '../../components/layout/OrgSidebar';
 import StatusPill from '../../components/common/StatusPill';
 import { useBloodData } from '../../context/BloodDataContext';
-
+import { useHashScroll } from '../../utils/useHashScroll';
 export const AdminOverviewPage = () => {
+  useHashScroll();
   const {
     applications,
     selectedAppId,
@@ -21,7 +22,7 @@ export const AdminOverviewPage = () => {
   const [adminNote, setAdminNote] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
   const [actionError, setActionError] = useState('');
-
+  
   const selectedApp = applications.find((a) => a.id === selectedAppId) || applications[0] || null;
 
   const flash = (text) => {

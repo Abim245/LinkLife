@@ -10,8 +10,10 @@ import BloodBadge from '../../components/common/BloodBadge';
 import StatusPill from '../../components/common/StatusPill';
 import { useBloodData } from '../../context/BloodDataContext';
 import { BLOOD_TYPES } from '../../utils/compatibility';
+import { useHashScroll } from '../../utils/useHashScroll';
 
 export const HospitalDashboardPage = () => {
+  useHashScroll();
   const {
     emergencies,
     inventory,

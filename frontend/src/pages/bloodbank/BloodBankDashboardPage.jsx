@@ -6,8 +6,9 @@ import StatusPill from '../../components/common/StatusPill';
 import { useBloodData } from '../../context/BloodDataContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
-
+import { useHashScroll } from '../../utils/useHashScroll';
 export const BloodBankDashboardPage = () => {
+  useHashScroll();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { inventory, adjustStock, refreshInventory } = useBloodData();
