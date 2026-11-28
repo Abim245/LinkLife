@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect , useRef} from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { connectSocket, disconnectSocket } from '../lib/socket';
@@ -31,7 +31,14 @@ const mapEmergency = (r, fallbackHospital = '') => ({
 // Shape of the live 'emergency:new' socket event
 const mapAlert = (a) => ({
   ...mapEmergency(
-    { _id: a.requestId, bloodType: a.bloodType, unitsNeeded: a.unitsNeeded, urgency: a.urgency, status: 'open', createdAt: new Date() },
+    {
+      _id: a.requestId,
+      bloodType: a.bloodType,
+      unitsNeeded: a.unitsNeeded,
+      urgency: a.urgency,
+      status: 'open',
+      createdAt: new Date(),
+    },
     a.hospital
   ),
   distanceKm: a.distanceKm,
@@ -46,7 +53,9 @@ const mapInventory = (inv) =>
     lowThreshold: inv.lowThreshold,
     status: statusFor(s.units, inv.lowThreshold),
     lastChanged: '—',
-  }));const BloodDataContext = createContext(null);
+  }));
+
+const BloodDataContext = createContext(null);
 
 export const INITIAL_INVENTORY = [
   { type: 'O-', units: 2, lowThreshold: 6, status: 'LOW', lastChanged: '12 min ago' },
@@ -220,9 +229,11 @@ export const INITIAL_USERS = [
   { id: 'u6', name: 'Mercy General Hospital', role: 'Hospital', status: 'VERIFIED', joined: 'Jan 20, 2026', phone: '+1 (555) 987-6543', email: 'admin@mercygen.org' },
 ];
 
-export const INITIAL_STOCK_MOVEMENTS = [{id: 'm1', when: '12 min ago', type: 'O-', change: -4, reason: 'Issued to hospital', by: 'Marcus Reed' },
-{ id: 'm2', when: 'Today, 09:30', type: 'O+', change: +2, reason: 'Donation received', by: 'Marcus Reed' },
-{ id: 'm4', when: 'Nov 14', type: 'B+', change: +3, reason: 'Donation received', by: 'Marcus Reed' }]
+export const INITIAL_STOCK_MOVEMENTS = [
+  { id: 'm1', when: '12 min ago', type: 'O-', change: -4, reason: 'Issued to hospital', by: 'Marcus Reed' },
+  { id: 'm2', when: 'Today, 09:30', type: 'O+', change: +2, reason: 'Donation received', by: 'Marcus Reed' },
+  { id: 'm4', when: 'Nov 14', type: 'B+', change: +3, reason: 'Donation received', by: 'Marcus Reed' },
+];
 
 export const INITIAL_DONOR_HISTORY = [
   { id: 'dh1', date: 'Aug 15, 2026', where: 'St. Jude Emergency Hospital', bloodType: 'O-', units: 1, status: 'CONFIRMED' },
@@ -243,159 +254,183 @@ export const BloodDataProvider = ({ children }) => {
   const [stockMovements, setStockMovements] = useState(INITIAL_STOCK_MOVEMENTS);
   const [donorHistory, setDonorHistory] = useState(INITIAL_DONOR_HISTORY);
   const [adminStats, setAdminStats] = useState({ verifiedOrgs: 0, donors: 0 });
+
   // Active donor emergency response state
   const [donorAlertResponse, setDonorAlertResponse] = useState(null);
   const [selectedEta, setSelectedEta] = useState('20 min');
+
   const emergenciesRef = useRef(emergencies);
   emergenciesRef.current = emergencies;
+
+  // Loads the donors alerted for one emergency (hospital, blood bank and admin only)
   const refreshEmergency = async (id) => {
-  try {
-    const { data } = await api.get(`/emergencies/${id}/alerts`);
-    const responders = data.map((a, i) => ({
-      id: `${id}-${i}`,
-      name: (typeof a.donor === 'string' ? a.donor : a.donor?.name) || a.name || a.donorName || 'Donor',
-      bloodType: a.bloodType || a.donor?.bloodType || '—',
-      status:
-        a.response === 'accepted' ? 'ON THE WAY' : a.response === 'declined' ? 'DECLINED' : 'AWAITING REPLY',
-      eta: a.etaMinutes ? `${a.etaMinutes} min` : '—',
-    }));
-    setEmergencies((prev) =>
-      prev.map((e) =>
-        e.id === id
-          ? { ...e, donorsAlerted: data.length, unitsConfirmed: responders.filter((r) => r.status === 'ON THE WAY').length, responders }
-          : e
-      )
-    );
-  } catch {
-    /* donors aren't allowed to read the alert list */
-  }
-  };
-  const refreshAdmin = async () => {
-  if (!currentUser?.id || currentUser.role !== 'admin') return;
-  try {
-    const { data: ov } = await api.get('/admin/overview');
-    const apps = ov.applications.map((a) => ({
-      ...a,
-      submittedAt: new Date(a.submittedAt).toLocaleString(),
-    }));
-    setApplications(apps);
-    setSelectedAppId((cur) =>
-      cur && apps.some((a) => a.id === cur)
-        ? cur
-        : (apps.find((a) => a.status === 'PENDING') || apps[0])?.id || null
-    );
-    setAdminStats(ov.stats);
-  } catch (err) {
-    console.error('Admin load failed:', err.message);
-  }
-};
-  const refreshInventory = async () => {
-  if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
-  try {
-    const { data: inv } = await api.get('/inventory');
-    setInventory(mapInventory(inv));
-  } catch {
-    /* keep what we have */
-  }
-  };
-  useEffect(() => {
-  const token = localStorage.getItem('token');
-  if (!token || !currentUser?.id) return; // mock users keep the mock data
-
-  const isOrg = ['hospital', 'bloodbank'].includes(currentUser.role);
-
-  (async () => {
     try {
-      const { data } = await api.get('/emergencies');
-      const mapped = data.map((r) => mapEmergency(r, currentUser.orgName));
-      setEmergencies(mapped);
-      if (currentUser.role === 'admin') refreshAdmin();
-      if (isOrg) {
-        mapped.filter((e) => e.status === 'LIVE').forEach((e) => refreshEmergency(e.id));
-        const { data: inv } = await api.get('/inventory');
-        setInventory(mapInventory(inv));
-        setStockMovements([]);
-      }
-    } catch (err) {
-      console.error('Load failed:', err.message);
+      const { data } = await api.get(`/emergencies/${id}/alerts`);
+      const responders = data.map((a, i) => ({
+        id: `${id}-${i}`,
+        name:
+          (typeof a.donor === 'string' ? a.donor : a.donor?.name) ||
+          a.name ||
+          a.donorName ||
+          'Donor',
+        bloodType: a.bloodType || a.donor?.bloodType || '—',
+        status:
+          a.response === 'accepted'
+            ? 'ON THE WAY'
+            : a.response === 'declined'
+            ? 'DECLINED'
+            : 'AWAITING REPLY',
+        eta: a.etaMinutes ? `${a.etaMinutes} min` : '—',
+      }));
+      setEmergencies((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                donorsAlerted: data.length,
+                unitsConfirmed: responders.filter((r) => r.status === 'ON THE WAY').length,
+                responders,
+              }
+            : e
+        )
+      );
+    } catch {
+      /* donors aren't allowed to read the alert list */
     }
-  })();
+  };
 
-  const socket = connectSocket(token);
-  if (!socket) return;
+  // Loads real organizations and stats for the admin console
+  const refreshAdmin = async () => {
+    if (!currentUser?.id || currentUser.role !== 'admin') return;
+    try {
+      const { data: ov } = await api.get('/admin/overview');
+      const apps = ov.applications.map((a) => ({
+        ...a,
+        submittedAt: new Date(a.submittedAt).toLocaleString(),
+      }));
+      setApplications(apps);
+      setSelectedAppId((cur) =>
+        cur && apps.some((a) => a.id === cur)
+          ? cur
+          : (apps.find((a) => a.status === 'PENDING') || apps[0])?.id || null
+      );
+      setAdminStats(ov.stats);
+    } catch (err) {
+      console.error('Admin load failed:', err.message);
+    }
+  };
 
-  socket.on('emergency:new', (a) =>
-    setEmergencies((prev) => (prev.some((e) => e.id === a.requestId) ? prev : [mapAlert(a), ...prev]))
-  );
-  socket.on('emergency:update', (u) => {
-    setEmergencies((prev) =>
-      prev.map((e) =>
-        e.id === u.requestId
-          ? {
-              ...e,
-              status: STATUS_LABEL[u.status] || e.status,
-              currentRadiusKm: u.radiusKm ?? e.currentRadiusKm,
-              unitsConfirmed: u.acceptedCount ?? e.unitsConfirmed,
-              donorsAlerted: u.alerted ?? e.donorsAlerted,
-            }
-          : e
+  const refreshInventory = async () => {
+    if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
+    try {
+      const { data: inv } = await api.get('/inventory');
+      setInventory(mapInventory(inv));
+    } catch {
+      /* keep what we have */
+    }
+  };
+
+  // Initial load + live socket events
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !currentUser?.id) return; // demo users keep the sample data
+
+    const isOrg = ['hospital', 'bloodbank'].includes(currentUser.role);
+
+    (async () => {
+      try {
+        if (currentUser.role === 'admin') refreshAdmin(); // runs first, so it never waits on the emergencies call
+
+        const { data } = await api.get('/emergencies');
+        const mapped = data.map((r) => mapEmergency(r, currentUser.orgName));
+        setEmergencies(mapped);
+
+        if (isOrg) {
+          mapped.filter((e) => e.status === 'LIVE').forEach((e) => refreshEmergency(e.id));
+          const { data: inv } = await api.get('/inventory');
+          setInventory(mapInventory(inv));
+          setStockMovements([]);
+        }
+      } catch (err) {
+        console.error('Load failed:', err.message);
+      }
+    })();
+
+    const socket = connectSocket(token);
+    if (!socket) return;
+
+    socket.on('emergency:new', (a) =>
+      setEmergencies((prev) =>
+        prev.some((e) => e.id === a.requestId) ? prev : [mapAlert(a), ...prev]
       )
     );
-    refreshEmergency(u.requestId);
-  });
-  socket.on('emergency:closed', (c) =>
-    setEmergencies((prev) =>
-      prev.map((e) => (e.id === c.requestId ? { ...e, status: STATUS_LABEL[c.reason] || 'CLOSED' } : e))
-    )
-  );
+    socket.on('emergency:update', (u) => {
+      setEmergencies((prev) =>
+        prev.map((e) =>
+          e.id === u.requestId
+            ? {
+                ...e,
+                status: STATUS_LABEL[u.status] || e.status,
+                currentRadiusKm: u.radiusKm ?? e.currentRadiusKm,
+                unitsConfirmed: u.acceptedCount ?? e.unitsConfirmed,
+                donorsAlerted: u.alerted ?? e.donorsAlerted,
+              }
+            : e
+        )
+      );
+      refreshEmergency(u.requestId);
+    });
+    socket.on('emergency:closed', (c) =>
+      setEmergencies((prev) =>
+        prev.map((e) =>
+          e.id === c.requestId ? { ...e, status: STATUS_LABEL[c.reason] || 'CLOSED' } : e
+        )
+      )
+    );
 
-  return () => disconnectSocket();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [currentUser?.id]);(async () => {
-  try {
-    if (currentUser.role === 'admin') refreshAdmin();   // <- moved up, before the emergencies call
+    return () => disconnectSocket();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
 
-    const { data } = await api.get('/emergencies');
-    const mapped = data.map((r) => mapEmergency(r, currentUser.orgName));
-    setEmergencies(mapped);
-    if (isOrg) {
-      // ...unchanged
-    }
-  } catch (err) {
-    console.error('Load failed:', err.message);
-  }
-})();
-
-    useEffect(() => {
+  // Polling backup for hospitals and blood banks (in case the socket drops)
+  useEffect(() => {
     if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
     const timer = setInterval(() => {
-     emergenciesRef.current
-  .filter((e) => e.status === 'LIVE')
-  .slice(0, 3)
-  .forEach((e) => refreshEmergency(e.id));
+      emergenciesRef.current
+        .filter((e) => e.status === 'LIVE')
+        .slice(0, 3)
+        .forEach((e) => refreshEmergency(e.id));
     }, 8000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+
+  // Admin: pick up new registrations without a reload
   useEffect(() => {
-  if (!currentUser?.id || currentUser.role !== 'admin') return;
-  const timer = setInterval(refreshAdmin, 15000);
-  return () => clearInterval(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [currentUser?.id]);
+    if (!currentUser?.id || currentUser.role !== 'admin') return;
+    const timer = setInterval(refreshAdmin, 15000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
   const widenRadius = async (id) => {
-  try {
-    const { data } = await api.post(`/emergencies/${id}/escalate`);
-    setEmergencies((prev) =>
-      prev.map((e) =>
-        e.id === id
-          ? { ...e, currentRadiusKm: data.radiusKm, wideningIn: `Widened to ${data.radiusKm} km`, donorsAlerted: e.donorsAlerted + data.alerted }
-          : e
-      )
-    );
-  } catch (err) {
-    alert(err.response?.data?.message || 'Could not widen the radius');
-  }
+    try {
+      const { data } = await api.post(`/emergencies/${id}/escalate`);
+      setEmergencies((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                currentRadiusKm: data.radiusKm,
+                wideningIn: `Widened to ${data.radiusKm} km`,
+                donorsAlerted: e.donorsAlerted + data.alerted,
+              }
+            : e
+        )
+      );
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not widen the radius');
+    }
   };
 
   const declareEmergency = async (form) => {
@@ -405,7 +440,10 @@ export const BloodDataProvider = ({ children }) => {
       urgency: String(form.urgency || 'urgent').toLowerCase(),
       ...(form.notes && { notes: form.notes }),
     });
-    const created = { ...mapEmergency(data.request, currentUser?.orgName), donorsAlerted: data.alerted };
+    const created = {
+      ...mapEmergency(data.request, currentUser?.orgName),
+      donorsAlerted: data.alerted,
+    };
     setEmergencies((prev) => [created, ...prev]);
     return created;
   };
@@ -419,28 +457,28 @@ export const BloodDataProvider = ({ children }) => {
     }
   };
 
-const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
-  try {
-    await api.post(`/emergencies/${id}/respond`, {
-      response: response === 'ACCEPTED' ? 'accepted' : 'declined',
-      ...(response === 'ACCEPTED' && { etaMinutes: parseInt(etaMinutes, 10) || 20 }),
-    });
-    setEmergencies((prev) =>
-      prev.map((e) =>
-        e.id === id
-          ? {
-              ...e,
-              myResponse: response === 'ACCEPTED' ? 'accepted' : 'declined',
-              myEta: response === 'ACCEPTED' ? etaMinutes : null,
-            }
-          : e
-      )
-    );
-    return true;
-  } catch (err) {
-    alert(err.response?.data?.message || 'Could not send your response');
-    return false;
-  }
+  const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
+    try {
+      await api.post(`/emergencies/${id}/respond`, {
+        response: response === 'ACCEPTED' ? 'accepted' : 'declined',
+        ...(response === 'ACCEPTED' && { etaMinutes: parseInt(etaMinutes, 10) || 20 }),
+      });
+      setEmergencies((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                myResponse: response === 'ACCEPTED' ? 'accepted' : 'declined',
+                myEta: response === 'ACCEPTED' ? etaMinutes : null,
+              }
+            : e
+        )
+      );
+      return true;
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not send your response');
+      return false;
+    }
   };
 
   // Adjust stock units
@@ -481,51 +519,49 @@ const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
   };
 
   // Admin approves / rejects / requests changes
- const updateApplicationStatus = async (appId, status, note = '') => {
-  if (status === 'APPROVED' && currentUser?.id) {
-    await api.patch(`/admin/orgs/${appId}/verify`); // throws on failure, so the screen doesn't claim success
-  }
-  setApplications((prev) =>
-    prev.map((a) => (a.id === appId ? { ...a, status, adminNote: note } : a))
-  );
-};
-
-  // Admin user actions
-  const updateUserStatus = (userId, newStatus) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, status: newStatus } : u))
+  const updateApplicationStatus = async (appId, status, note = '') => {
+    if (status === 'APPROVED' && currentUser?.id) {
+      await api.patch(`/admin/orgs/${appId}/verify`); // throws on failure, so the screen doesn't claim success
+    }
+    setApplications((prev) =>
+      prev.map((a) => (a.id === appId ? { ...a, status, adminNote: note } : a))
     );
+  };
+
+  // Admin user actions (sample data for now)
+  const updateUserStatus = (userId, newStatus) => {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: newStatus } : u)));
   };
 
   return (
     <BloodDataContext.Provider
-    value={{
-    emergencies,
-    inventory,
-    applications,
-    selectedAppId,
-    setSelectedAppId,
-    users,
-    stockMovements,
-    donorHistory,
-    setDonorHistory,
-    donorAlertResponse,
-    selectedEta,
-    setSelectedEta,
-    adminStats,
-    refreshEmergency,
-    refreshInventory,
-    refreshAdmin,
-    widenRadius,
-    declareEmergency,
-    updateEmergencyStatus,
-    respondToEmergency,
-    adjustStock,
-    recordMovement,
-    updateApplicationStatus,
-    updateUserStatus,
-  }}
->
+      value={{
+        emergencies,
+        inventory,
+        applications,
+        selectedAppId,
+        setSelectedAppId,
+        users,
+        stockMovements,
+        donorHistory,
+        setDonorHistory,
+        donorAlertResponse,
+        selectedEta,
+        setSelectedEta,
+        adminStats,
+        refreshEmergency,
+        refreshInventory,
+        refreshAdmin,
+        widenRadius,
+        declareEmergency,
+        updateEmergencyStatus,
+        respondToEmergency,
+        adjustStock,
+        recordMovement,
+        updateApplicationStatus,
+        updateUserStatus,
+      }}
+    >
       {children}
     </BloodDataContext.Provider>
   );
