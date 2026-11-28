@@ -58,10 +58,7 @@ export const OrgSidebar = ({ children }) => {
       { name: 'Overview', path: '/admin', icon: LayoutDashboard },
       { name: 'Approvals', path: '/admin#approvals', icon: FileCheck2, badge: String(pendingApprovalsCount) },
       { name: 'Users', path: '/admin#users', icon: Users },
-      { name: 'Organizations', path: '/admin#organizations', icon: Building2 },
-      { name: 'Emergencies', path: '/admin#emergencies', icon: AlertTriangle },
       { name: 'Alert log', path: '/admin#alerts', icon: ScrollText },
-      { name: 'Settings', path: '/admin#settings', icon: Settings },
     ];
   }
 
@@ -99,7 +96,9 @@ export const OrgSidebar = ({ children }) => {
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname === item.path;
+          const isActive = item.path.includes('#')
+          ? location.pathname + location.hash === item.path
+          : location.pathname === item.path && !location.hash;
 
           return (
             <Link
