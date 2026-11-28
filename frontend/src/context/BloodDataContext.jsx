@@ -351,7 +351,21 @@ export const BloodDataProvider = ({ children }) => {
 
   return () => disconnectSocket();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [currentUser?.id]);
+}, [currentUser?.id]);(async () => {
+  try {
+    if (currentUser.role === 'admin') refreshAdmin();   // <- moved up, before the emergencies call
+
+    const { data } = await api.get('/emergencies');
+    const mapped = data.map((r) => mapEmergency(r, currentUser.orgName));
+    setEmergencies(mapped);
+    if (isOrg) {
+      // ...unchanged
+    }
+  } catch (err) {
+    console.error('Load failed:', err.message);
+  }
+})();
+
     useEffect(() => {
     if (!currentUser?.id || !['hospital', 'bloodbank'].includes(currentUser.role)) return;
     const timer = setInterval(() => {
@@ -485,29 +499,33 @@ const respondToEmergency = async (id, response, etaMinutes = '20 min') => {
 
   return (
     <BloodDataContext.Provider
-      value={{
-        emergencies,
-        inventory,
-        applications,
-        selectedAppId,
-        setSelectedAppId,
-        users,
-        stockMovements,
-        donorHistory,
-        setDonorHistory,
-        donorAlertResponse,
-        selectedEta,
-        setSelectedEta,
-        widenRadius,
-        declareEmergency,
-        updateEmergencyStatus,
-        respondToEmergency,
-        adjustStock,
-        recordMovement,
-        updateApplicationStatus,
-        updateUserStatus,
-      }}
-    >
+    value={{
+    emergencies,
+    inventory,
+    applications,
+    selectedAppId,
+    setSelectedAppId,
+    users,
+    stockMovements,
+    donorHistory,
+    setDonorHistory,
+    donorAlertResponse,
+    selectedEta,
+    setSelectedEta,
+    adminStats,
+    refreshEmergency,
+    refreshInventory,
+    refreshAdmin,
+    widenRadius,
+    declareEmergency,
+    updateEmergencyStatus,
+    respondToEmergency,
+    adjustStock,
+    recordMovement,
+    updateApplicationStatus,
+    updateUserStatus,
+  }}
+>
       {children}
     </BloodDataContext.Provider>
   );
